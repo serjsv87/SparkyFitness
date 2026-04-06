@@ -10,7 +10,9 @@ import {
 import type {
   ExerciseHistoryResponse,
   ExerciseSessionResponse,
+  CalorieBalance,
 } from '@workspace/shared';
+import type { InfiniteData } from '@tanstack/react-query';
 import type { DailySummaryRawData } from '../../src/hooks/useDailySummary';
 
 type PresetSession = Extract<ExerciseSessionResponse, { type: 'preset' }>;
@@ -45,6 +47,17 @@ const makeDefaultGoals = () => ({
   target_exercise_calories_burned: 400,
 });
 
+const makeDefaultCalorieBalance = (): CalorieBalance => ({
+  eaten: 0,
+  burned: 0,
+  remaining: 2000,
+  goal: 2000,
+  net: 0,
+  progress: 0,
+  bmr: 1700,
+  exerciseSource: 'none',
+});
+
 describe('syncExerciseSessionInCache', () => {
   let queryClient: QueryClient;
 
@@ -56,7 +69,7 @@ describe('syncExerciseSessionInCache', () => {
     queryClient.clear();
   });
 
-  test('replaces matching sessions in history and daily summary caches', () => {
+  test('replaces matching sessions in history cache without mutating daily summary cache', () => {
     const originalSession = makePresetSession('session-1', 'Push Day');
     const otherSession = makePresetSession('session-2', 'Leg Day');
     const updatedSession = {
@@ -91,25 +104,28 @@ describe('syncExerciseSessionInCache', () => {
       waterIntake: {
         water_ml: 0,
       },
+      stepCalories: 0,
+      calorieBalance: makeDefaultCalorieBalance(),
     };
 
-    queryClient.setQueryData([...exerciseHistoryQueryKey, 1], historyPage);
+    queryClient.setQueryData<InfiniteData<ExerciseHistoryResponse>>(exerciseHistoryQueryKey, {
+      pages: [historyPage],
+      pageParams: [1],
+    });
     queryClient.setQueryData(dailySummaryQueryKey('2024-06-15'), dailySummary);
 
     syncExerciseSessionInCache(queryClient, updatedSession);
 
-    const cachedHistory = queryClient.getQueryData<ExerciseHistoryResponse>([
-      ...exerciseHistoryQueryKey,
-      1,
-    ]);
+    const cachedHistory = queryClient.getQueryData<InfiniteData<ExerciseHistoryResponse>>(
+      exerciseHistoryQueryKey,
+    );
     const cachedSummary = queryClient.getQueryData<DailySummaryRawData>(
       dailySummaryQueryKey('2024-06-15'),
     );
 
-    expect(cachedHistory?.sessions[0]).toEqual(updatedSession);
-    expect(cachedHistory?.sessions[1]).toEqual(otherSession);
-    expect(cachedSummary?.exerciseEntries[0]).toEqual(updatedSession);
-    expect(cachedSummary?.exerciseEntries[1]).toEqual(otherSession);
+    expect(cachedHistory?.pages[0].sessions[0]).toEqual(updatedSession);
+    expect(cachedHistory?.pages[0].sessions[1]).toEqual(otherSession);
+    expect(cachedSummary).toBe(dailySummary);
   });
 
   test('does not modify history cache when session id does not match', () => {
@@ -121,18 +137,20 @@ describe('syncExerciseSessionInCache', () => {
       pagination: { page: 1, pageSize: 20, totalCount: 1, hasMore: false },
     };
 
-    queryClient.setQueryData([...exerciseHistoryQueryKey, 1], historyPage);
+    queryClient.setQueryData<InfiniteData<ExerciseHistoryResponse>>(exerciseHistoryQueryKey, {
+      pages: [historyPage],
+      pageParams: [1],
+    });
 
     syncExerciseSessionInCache(queryClient, updatedSession);
 
-    const cached = queryClient.getQueryData<ExerciseHistoryResponse>([
-      ...exerciseHistoryQueryKey,
-      1,
-    ]);
-    expect(cached).toBe(historyPage);
+    const cached = queryClient.getQueryData<InfiniteData<ExerciseHistoryResponse>>(
+      exerciseHistoryQueryKey,
+    );
+    expect(cached?.pages[0]).toBe(historyPage);
   });
 
-  test('skips daily summary update when entry_date is null', () => {
+  test('handles null entry_date without touching daily summary cache', () => {
     const updatedSession = makePresetSession('session-1', 'Updated', {
       entry_date: null as any,
     });
@@ -142,6 +160,8 @@ describe('syncExerciseSessionInCache', () => {
       foodEntries: [],
       exerciseEntries: [makePresetSession('session-1', 'Original')],
       waterIntake: { water_ml: 0 },
+      stepCalories: 0,
+      calorieBalance: makeDefaultCalorieBalance(),
     };
 
     queryClient.setQueryData(dailySummaryQueryKey('2024-06-15'), dailySummary);
@@ -151,7 +171,7 @@ describe('syncExerciseSessionInCache', () => {
     const cached = queryClient.getQueryData<DailySummaryRawData>(
       dailySummaryQueryKey('2024-06-15'),
     );
-    expect(cached?.exerciseEntries[0].name).toBe('Original');
+    expect(cached).toBe(dailySummary);
   });
 
   test('handles empty history cache gracefully', () => {
@@ -173,6 +193,8 @@ describe('syncExerciseSessionInCache', () => {
       foodEntries: [],
       exerciseEntries: [session],
       waterIntake: { water_ml: 0 },
+      stepCalories: 0,
+      calorieBalance: makeDefaultCalorieBalance(),
     };
 
     queryClient.setQueryData(dailySummaryQueryKey('2024-06-15'), dailySummary);

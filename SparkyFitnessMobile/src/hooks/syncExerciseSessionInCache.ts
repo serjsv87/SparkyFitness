@@ -1,8 +1,6 @@
-import type { QueryClient } from '@tanstack/react-query';
+import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import type { ExerciseHistoryResponse, ExerciseSessionResponse } from '@workspace/shared';
-import type { DailySummaryRawData } from './useDailySummary';
-import { normalizeDate } from '../utils/dateUtils';
-import { dailySummaryQueryKey, exerciseHistoryQueryKey } from './queryKeys';
+import { exerciseHistoryQueryKey } from './queryKeys';
 
 function replaceSession(
   sessions: ExerciseSessionResponse[],
@@ -26,41 +24,32 @@ export function syncExerciseSessionInCache(
   queryClient: QueryClient,
   updatedSession: ExerciseSessionResponse,
 ) {
-  queryClient.setQueriesData<ExerciseHistoryResponse>(
+  queryClient.setQueriesData<InfiniteData<ExerciseHistoryResponse>>(
     { queryKey: exerciseHistoryQueryKey },
     existing => {
       if (!existing) return existing;
 
-      const nextSessions = replaceSession(existing.sessions, updatedSession);
-      if (nextSessions === existing.sessions) {
+      let didUpdate = false;
+      const nextPages = existing.pages.map(page => {
+        const nextSessions = replaceSession(page.sessions, updatedSession);
+        if (nextSessions === page.sessions) {
+          return page;
+        }
+
+        didUpdate = true;
+        return {
+          ...page,
+          sessions: nextSessions,
+        };
+      });
+
+      if (!didUpdate) {
         return existing;
       }
 
       return {
         ...existing,
-        sessions: nextSessions,
-      };
-    },
-  );
-
-  const entryDate = updatedSession.entry_date ? normalizeDate(updatedSession.entry_date) : undefined;
-  if (!entryDate) {
-    return;
-  }
-
-  queryClient.setQueryData<DailySummaryRawData>(
-    dailySummaryQueryKey(entryDate),
-    existing => {
-      if (!existing) return existing;
-
-      const nextSessions = replaceSession(existing.exerciseEntries, updatedSession);
-      if (nextSessions === existing.exerciseEntries) {
-        return existing;
-      }
-
-      return {
-        ...existing,
-        exerciseEntries: nextSessions,
+        pages: nextPages,
       };
     },
   );

@@ -61,6 +61,8 @@ const globalSettingsRoutes = require('./routes/globalSettingsRoutes');
 const versionRoutes = require('./routes/versionRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes'); // Import onboarding routes
 const customNutrientRoutes = require('./routes/customNutrientRoutes'); // Import custom nutrient routes
+const telegramRoutes = require('./routes/telegramRoutes');
+const mfpRoutes = require('./routes/mfpRoutes'); // Import MFP routes
 const { applyMigrations } = require('./utils/dbMigrations');
 const { applyRlsPolicies } = require('./utils/applyRlsPolicies');
 const { grantPermissions } = require('./db/grantPermissions');
@@ -80,6 +82,7 @@ const garminService = require('./services/garminService'); // Import garminServi
 const fitbitService = require('./services/fitbitService'); // Import fitbitService
 const polarService = require('./services/polarService'); // Import polarService
 const stravaService = require('./services/stravaService'); // Import stravaService
+const mfpSyncService = require('./services/mfpSyncService'); // Import mfpSyncService
 const dailySummaryRoutes = require('./routes/dailySummaryRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const mealTypeRoutes = require('./routes/mealTypeRoutes');
@@ -88,6 +91,8 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const redoc = require('redoc-express');
 const swaggerSpecs = require('./config/swagger');
 const { createCorsOriginChecker } = require('./utils/corsHelper');
+const telegramBotService =
+  require('./integrations/telegram/telegramBotService').default;
 
 const app = express();
 app.set('trust proxy', 1); // Trust the first proxy immediately in front of me just internal nginx. external not required.
@@ -308,6 +313,7 @@ app.use((req, res, next) => {
     '/api/uploads',
     '/uploads',
     '/api/ping',
+    '/api/telegram/webhook',
   ];
 
   const isPublic = publicRoutes.some((route) => {
@@ -379,6 +385,7 @@ app.use('/api/integrations/fitbit', fitbitRoutes);
 app.use('/api/integrations/polar', polarRoutes);
 app.use('/api/integrations/strava', stravaRoutes);
 app.use('/api/integrations/hevy', hevyRoutes);
+app.use('/api/integrations/myfitnesspal', mfpRoutes);
 app.use('/api/mood', moodRoutes);
 app.use('/api/fasting', fastingRoutes);
 app.use('/api/admin', adminRoutes);
@@ -395,6 +402,8 @@ app.use('/api/review', reviewRoutes);
 app.use('/api/custom-nutrients', customNutrientRoutes);
 app.use('/api/adaptive-tdee', adaptiveTdeeRoutes);
 app.use('/api/meal-types', mealTypeRoutes);
+app.use('/api/telegram', telegramRoutes);
+app.use('/api/telegram', telegramRoutes);
 
 // Swagger
 app.use(
@@ -551,6 +560,36 @@ const schedulePolarSyncs = async () => {
   });
 };
 
+// MyFitnessPal sync
+const scheduleMFPSyncs = async () => {
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const mfpProviders =
+        await externalProviderRepository.getProvidersByType('myfitnesspal');
+      const today = new Date().toISOString().split('T')[0];
+
+      for (const provider of mfpProviders) {
+        if (provider.is_active && provider.sync_frequency !== 'manual') {
+          try {
+            await mfpSyncService.syncDailyTotals(provider.user_id, today);
+            await externalProviderRepository.updateProviderLastSync(
+              provider.id,
+              new Date()
+            );
+          } catch (error) {
+            console.error(
+              `[CRON] MFP sync failed for user ${provider.user_id}:`,
+              error
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[CRON] scheduleMFPSyncs top-level error:', e);
+    }
+  });
+};
+
 applyMigrations()
   .then(applyRlsPolicies)
   .then(async () => {
@@ -577,6 +616,19 @@ applyMigrations()
     scheduleFitbitSyncs();
     schedulePolarSyncs();
     scheduleStravaSyncs();
+    scheduleMFPSyncs();
+
+    // Initialize Telegram Bot
+    telegramBotService
+      .initialize()
+      .catch((err) =>
+        log('error', '[TELEGRAM BOT] Failed to initialize bot:', err)
+      );
+
+    // Initialize Telegram Bot
+    telegramBotService.initialize().catch((err) =>
+      log('error', '[TELEGRAM BOT] Failed to initialize bot:', err)
+    );
 
     if (process.env.SPARKY_FITNESS_ADMIN_EMAIL) {
       const userRepository = require('./models/userRepository');

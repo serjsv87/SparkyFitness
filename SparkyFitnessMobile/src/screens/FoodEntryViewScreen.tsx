@@ -1,7 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Pressable, ScrollView, TextInput } from 'react-native';
 import Button from '../components/ui/Button';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, { LinearTransition } from 'react-native-reanimated';
+import FadeView from '../components/FadeView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 import Icon from '../components/Icon';
@@ -16,6 +17,7 @@ import { useUpdateFoodEntry } from '../hooks/useUpdateFoodEntry';
 import { useProfile } from '../hooks/useProfile';
 import type { UpdateFoodEntryPayload } from '../services/api/foodEntriesApi';
 import type { FoodFormData } from '../components/FoodForm';
+import { toFormString, parseOptional, buildNutrientDisplayList } from '../types/foodInfo';
 import type { FoodVariantDetail } from '../types/foods';
 import type { FoodEntry } from '../types/foodEntries';
 import type { RootStackScreenProps } from '../types/navigation';
@@ -80,6 +82,13 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
           saturatedFat: v.saturated_fat,
           sodium: v.sodium,
           sugars: v.sugars,
+          transFat: v.trans_fat,
+          potassium: v.potassium,
+          calcium: v.calcium,
+          iron: v.iron,
+          cholesterol: v.cholesterol,
+          vitaminA: v.vitamin_a,
+          vitaminC: v.vitamin_c,
         };
       }
     }
@@ -92,8 +101,15 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
       fat: entry.fat ?? 0,
       fiber: entry.dietary_fiber,
       saturatedFat: entry.saturated_fat,
+      transFat: entry.trans_fat,
       sodium: entry.sodium,
       sugars: entry.sugars,
+      potassium: entry.potassium,
+      calcium: entry.calcium,
+      iron: entry.iron,
+      cholesterol: entry.cholesterol,
+      vitaminA: entry.vitamin_a,
+      vitaminC: entry.vitamin_c,
     };
   }, [variants, selectedVariantId, entry]);
 
@@ -106,10 +122,17 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
       protein: parseFloat(adjustedValues.protein) || 0,
       carbs: parseFloat(adjustedValues.carbs) || 0,
       fat: parseFloat(adjustedValues.fat) || 0,
-      fiber: adjustedValues.fiber ? parseFloat(adjustedValues.fiber) : undefined,
-      saturatedFat: adjustedValues.saturatedFat ? parseFloat(adjustedValues.saturatedFat) : undefined,
-      sodium: adjustedValues.sodium ? parseFloat(adjustedValues.sodium) : undefined,
-      sugars: adjustedValues.sugars ? parseFloat(adjustedValues.sugars) : undefined,
+      fiber: parseOptional(adjustedValues.fiber),
+      saturatedFat: parseOptional(adjustedValues.saturatedFat),
+      sodium: parseOptional(adjustedValues.sodium),
+      sugars: parseOptional(adjustedValues.sugars),
+      transFat: parseOptional(adjustedValues.transFat),
+      potassium: parseOptional(adjustedValues.potassium),
+      calcium: parseOptional(adjustedValues.calcium),
+      iron: parseOptional(adjustedValues.iron),
+      cholesterol: parseOptional(adjustedValues.cholesterol),
+      vitaminA: parseOptional(adjustedValues.vitaminA),
+      vitaminC: parseOptional(adjustedValues.vitaminC),
     };
   }, [adjustedValues, activeVariant]);
 
@@ -193,10 +216,17 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
         protein: String(displayValues.protein),
         carbs: String(displayValues.carbs),
         fat: String(displayValues.fat),
-        fiber: displayValues.fiber != null ? String(displayValues.fiber) : '',
-        saturatedFat: displayValues.saturatedFat != null ? String(displayValues.saturatedFat) : '',
-        sodium: displayValues.sodium != null ? String(displayValues.sodium) : '',
-        sugars: displayValues.sugars != null ? String(displayValues.sugars) : '',
+        fiber: toFormString(displayValues.fiber),
+        saturatedFat: toFormString(displayValues.saturatedFat),
+        sodium: toFormString(displayValues.sodium),
+        sugars: toFormString(displayValues.sugars),
+        transFat: toFormString(displayValues.transFat),
+        potassium: toFormString(displayValues.potassium),
+        calcium: toFormString(displayValues.calcium),
+        iron: toFormString(displayValues.iron),
+        cholesterol: toFormString(displayValues.cholesterol),
+        vitaminA: toFormString(displayValues.vitaminA),
+        vitaminC: toFormString(displayValues.vitaminC),
       },
     });
   };
@@ -252,6 +282,13 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
       payload.sodium = displayValues.sodium;
       payload.dietary_fiber = displayValues.fiber;
       payload.sugars = displayValues.sugars;
+      payload.trans_fat = displayValues.transFat;
+      payload.potassium = displayValues.potassium;
+      payload.calcium = displayValues.calcium;
+      payload.iron = displayValues.iron;
+      payload.cholesterol = displayValues.cholesterol;
+      payload.vitamin_a = displayValues.vitaminA;
+      payload.vitamin_c = displayValues.vitaminC;
     }
 
     // Nothing changed — just exit edit mode
@@ -304,19 +341,7 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
     ? `1 serving · ${entry.serving_size} ${entry.unit} per serving`
     : `${servings % 1 === 0 ? servings : parseFloat(servings.toFixed(2))} servings · ${entry.serving_size} ${entry.unit} per serving`;
 
-  const otherNutrients = isEditing
-    ? [
-        { label: 'Fiber', value: displayValues.fiber, unit: 'g' },
-        { label: 'Sugars', value: displayValues.sugars, unit: 'g' },
-        { label: 'Saturated Fat', value: displayValues.saturatedFat, unit: 'g' },
-        { label: 'Sodium', value: displayValues.sodium, unit: 'mg' },
-      ].filter((n) => n.value != null)
-    : [
-        { label: 'Fiber', value: entry.dietary_fiber, unit: 'g' },
-        { label: 'Sugars', value: entry.sugars, unit: 'g' },
-        { label: 'Saturated Fat', value: entry.saturated_fat, unit: 'g' },
-        { label: 'Sodium', value: entry.sodium, unit: 'mg' },
-      ].filter((n) => n.value != null);
+  const otherNutrients = buildNutrientDisplayList(displayValues);
 
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
@@ -330,7 +355,7 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
           <Icon name="chevron-back" size={22} color={accentColor} />
         </TouchableOpacity>
         {canEdit && !isEditing && (
-          <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ marginLeft: 'auto', zIndex: 10 }}>
+          <FadeView style={{ marginLeft: 'auto', zIndex: 10 }}>
             <Button
               variant="ghost"
               onPress={() => updateEdit({ isEditing: true })}
@@ -339,10 +364,10 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
             >
               Edit
             </Button>
-          </Animated.View>
+          </FadeView>
         )}
         {isEditing && (
-          <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ marginLeft: 'auto', zIndex: 10 }}>
+          <FadeView style={{ marginLeft: 'auto', zIndex: 10 }}>
             <Button
               variant="ghost"
               onPress={handleSave}
@@ -351,7 +376,7 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
             >
               Done
             </Button>
-          </Animated.View>
+          </FadeView>
         )}
       </View>
 
@@ -367,7 +392,7 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
             </Text>
           )}
           {isEditing ? (
-            <Animated.View key="edit-serving" entering={FadeIn.duration(250)} exiting={FadeOut.duration(150)}>
+            <FadeView key="edit-serving">
             <View className="mt-3">
               <View className="flex-row items-center">
                 <View className="flex-row items-center bg-raised border border-border-subtle rounded-lg overflow-hidden">
@@ -429,11 +454,11 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
                 )}
               </View>
             </View>
-            </Animated.View>
+            </FadeView>
           ) : (
-            <Animated.View key="view-serving" entering={FadeIn.duration(250)} exiting={FadeOut.duration(150)}>
+            <FadeView key="view-serving">
               <Text className="text-text-secondary text-sm mt-3">{servingsDisplay}</Text>
-            </Animated.View>
+            </FadeView>
           )}
         </Animated.View>
 
@@ -481,15 +506,15 @@ const FoodEntryViewScreen: React.FC<FoodEntryViewScreenProps> = ({ navigation, r
               ))}
             </Animated.View>
             {isEditing && (
-              <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
+              <FadeView>
                 <Icon name="chevron-forward" size={16} color={textPrimary} style={{ marginLeft: 8 }} />
-              </Animated.View>
+              </FadeView>
             )}
           </Animated.View>
           {isEditing && (
-            <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
+            <FadeView>
               <Text className="text-text-secondary text-xs text-center mt-4">Tap to edit nutrition</Text>
-            </Animated.View>
+            </FadeView>
           )}
         </Pressable>
         </Animated.View>

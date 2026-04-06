@@ -43,7 +43,7 @@ const ICON_MAP = {
   'globe': { sf: 'globe', ion: 'globe-outline' },
 
   // Food
-  'food': { sf: 'fork.knife', ion: 'restaurant-outline' },
+  'food': { sf: 'fork.knife', ion: 'restaurant' },
 
   // Meals
   'meal-breakfast': { sf: 'sunrise.fill', ion: 'sunny' },
@@ -79,7 +79,7 @@ const ICON_MAP = {
   'chart-bar': { sf: 'chart.bar.fill', ion: 'bar-chart' },
   'sync': { sf: 'arrow.triangle.2.circlepath', ion: 'sync' },
   'book': { sf: 'book.fill', ion: 'book' },
-  'scan': { sf: 'barcode.viewfinder', ion: 'scan-outline' },
+  'scan': { sf: 'barcode.viewfinder', ion: 'barcode-outline' },
   'flashlight-on': { sf: 'flashlight.on.fill', ion: 'flash' },
   'flashlight-off': { sf: 'flashlight.off.fill', ion: 'flash-off' },
 } as const;

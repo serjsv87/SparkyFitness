@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, ActivityIndicator, ScrollView, RefreshControl, Pressable, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, ScrollView, RefreshControl, Pressable } from 'react-native';
 import Button from '../components/ui/Button';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +11,6 @@ import CalorieRingCard from '../components/CalorieRingCard';
 import MacroCard from '../components/MacroCard';
 import DateNavigator from '../components/DateNavigator';
 import CalendarSheet, { type CalendarSheetRef } from '../components/CalendarSheet';
-import { calculateEffectiveBurned, calculateCalorieBalance } from '../services/calculations';
 import { addDays, getTodayDate } from '../utils/dateUtils';
 import { weightFromKg } from '../utils/unitConversions';
 import HydrationGauge from '../components/HydrationGauge';
@@ -103,7 +102,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
   const [chartPage, setChartPage] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const topSafeAreaStyle = Platform.OS === 'ios' ? { paddingTop: insets.top } : undefined;
+  const topSafeAreaStyle = { paddingTop: insets.top };
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([refetch(), refetchPreferences(), refetchMeasurements(), refetchSteps()]);
@@ -143,7 +142,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               onNextDay={goToNextDay}
               onToday={goToToday}
               onDatePress={openCalendar}
-              skipSafeAreaTop
+              skipTopInset
             />
           )}
           <View className="flex-1 items-center justify-center p-8 shadow-sm">
@@ -165,7 +164,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             onNextDay={goToNextDay}
             onToday={goToToday}
             onDatePress={openCalendar}
-            skipSafeAreaTop
+            skipTopInset
           />
           <View className="flex-1 items-center justify-center p-8 shadow-sm">
             <Icon name="alert-circle" size={64} color="#EF4444" />
@@ -192,18 +191,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       return null;
     }
 
-    const totalBurned = calculateEffectiveBurned({
-      activeCalories: summary.activeCalories,
-      otherExerciseCalories: summary.otherExerciseCalories,
-      stepCalories: summary.stepCalories,
-    });
-
-    const { netCalories, remainingCalories } = calculateCalorieBalance({
-      calorieGoal: summary.calorieGoal,
-      caloriesConsumed: summary.caloriesConsumed,
-      caloriesBurned: totalBurned,
-    });
-    const progressPercent = summary.calorieGoal > 0 ? netCalories / summary.calorieGoal : 0;
+    const { eaten, burned, remaining, goal, progress } = summary.calorieBalance;
 
     return (
       <ScrollView
@@ -221,16 +209,16 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           onNextDay={goToNextDay}
           onToday={goToToday}
           onDatePress={openCalendar}
-          skipSafeAreaTop
+          skipTopInset
           skipHorizontalPadding
         />
-        {(summary.foodEntries.length > 0 || summary.exerciseEntries.length > 0 || summary.calorieGoal > 0) && (
+        {(summary.foodEntries.length > 0 || summary.exerciseEntries.length > 0 || goal > 0) && (
           <CalorieRingCard
-            caloriesConsumed={summary.caloriesConsumed}
-            caloriesBurned={totalBurned}
-            calorieGoal={summary.calorieGoal}
-            remainingCalories={remainingCalories}
-            progressPercent={progressPercent}
+            caloriesConsumed={eaten}
+            caloriesBurned={burned}
+            calorieGoal={goal}
+            remainingCalories={remaining}
+            progressPercent={progress / 100}
           />
         )}
         {/* Macros Section - 2x2 grid in one card */}

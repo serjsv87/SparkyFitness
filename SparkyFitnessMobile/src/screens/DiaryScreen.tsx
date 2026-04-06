@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { View, Text, ActivityIndicator, ScrollView, RefreshControl, Platform } from 'react-native';
 import Button from '../components/ui/Button';
 import { Gesture, GestureDetector, Directions } from 'react-native-gesture-handler';
@@ -14,6 +14,8 @@ import ServingAdjustSheet, { type ServingAdjustSheetRef } from '../components/Se
 import EmptyDayIllustration from '../components/EmptyDayIllustration';
 import StatusView from '../components/StatusView';
 import { useServerConnection, useDailySummary } from '../hooks';
+import { usePreferences } from '../hooks/usePreferences';
+import { useExerciseImageSource } from '../hooks/useExerciseImageSource';
 import { addDays, getTodayDate } from '../utils/dateUtils';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { StackScreenProps } from '@react-navigation/stack';
@@ -42,6 +44,10 @@ const DiaryScreen: React.FC<DiaryScreenProps> = ({ navigation }) => {
     }, [])
   );
 
+  useEffect(() => {
+    navigation.setParams({ selectedDate });
+  }, [navigation, selectedDate]);
+
   const goToPreviousDay = useCallback(() => setSelectedDate(prev => addDays(prev, -1)), []);
   const goToNextDay = useCallback(() => setSelectedDate(prev => {
     const today = getTodayDate();
@@ -57,6 +63,11 @@ const DiaryScreen: React.FC<DiaryScreenProps> = ({ navigation }) => {
 
   const openCalendar = useCallback(() => calendarRef.current?.present(), []);
   const handleCalendarSelect = useCallback((date: string) => setSelectedDate(date), []);
+
+  const { preferences } = usePreferences();
+  const weightUnit = (preferences?.default_weight_unit as 'kg' | 'lbs') ?? 'kg';
+  const distanceUnit = (preferences?.default_distance_unit as 'km' | 'miles') ?? 'km';
+  const { getImageSource } = useExerciseImageSource();
 
   const { isConnected, isLoading: isConnectionLoading } = useServerConnection();
   const { summary, isLoading, isError, refetch } = useDailySummary({
@@ -145,7 +156,13 @@ const DiaryScreen: React.FC<DiaryScreenProps> = ({ navigation }) => {
         ) : (
           <>
             <FoodSummary foodEntries={summary.foodEntries} onAddFood={() => navigation.navigate('FoodSearch', { date: selectedDate })} onAdjustServing={(entry) => servingSheetRef.current?.present(entry)} />
-            <ExerciseSummary exerciseEntries={summary.exerciseEntries} onPressWorkout={(session) => navigation.navigate('WorkoutDetail', { session })} />
+            <ExerciseSummary exerciseEntries={summary.exerciseEntries} getImageSource={getImageSource} weightUnit={weightUnit} distanceUnit={distanceUnit} onPressWorkout={(session) => {
+              if (session.type === 'preset') {
+                navigation.navigate('WorkoutDetail', { session });
+              } else {
+                navigation.navigate('ActivityDetail', { session });
+              }
+            }} />
           </>
         )}
       </ScrollView>
