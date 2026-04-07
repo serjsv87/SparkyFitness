@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'url';
 import './env.js'; // Diese Zeile MUSS ganz oben stehen
 import path from 'path';
 import fs from 'fs';
@@ -56,6 +57,7 @@ import versionRoutes from './routes/versionRoutes.js';
 import onboardingRoutes from './routes/onboardingRoutes.js';
 import customNutrientRoutes from './routes/customNutrientRoutes.js';
 import telegramRoutes from './routes/telegramRoutes.js';
+import mfpRoutes from './routes/mfpRoutes.js';
 import { applyMigrations } from './utils/dbMigrations.js';
 import { applyRlsPolicies } from './utils/applyRlsPolicies.js';
 import waterContainerRoutes from './routes/waterContainerRoutes.js';
@@ -100,7 +102,6 @@ import { upsertEnvOidcProvider } from './utils/oidcEnvConfig.js';
 import userRepository from './models/userRepository.js';
 import telegramBotService from './integrations/telegram/telegramBotService.js';
 
-import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -111,6 +112,7 @@ try {
   process.exitCode = 1;
   throw error;
 }
+
 const app = express();
 app.set('trust proxy', 1); // Trust the first proxy immediately in front of me just internal nginx. external not required.
 const PORT = process.env.SPARKY_FITNESS_SERVER_PORT || 3010;
@@ -403,6 +405,7 @@ app.use('/api/custom-nutrients', customNutrientRoutes);
 app.use('/api/adaptive-tdee', adaptiveTdeeRoutes);
 app.use('/api/meal-types', mealTypeRoutes);
 app.use('/api/telegram', telegramRoutes);
+app.use('/api/integrations/myfitnesspal', mfpRoutes);
 
 // Swagger
 app.use(
@@ -595,11 +598,8 @@ applyMigrations()
     server.keepAliveTimeout = 181000; // Must be > proxy's idle timeout (nginx=75s, traefik=default 180s)
     server.headersTimeout = 182000; // Must be slightly > keepAliveTimeout
     // Graceful shutdown
-    let shuttingDown = false;
     // @ts-expect-error TS7006
     const shutdown = async (signal) => {
-      if (shuttingDown) return;
-      shuttingDown = true;
       log('info', `${signal} received, shutting down gracefully...`);
       server.close(async () => {
         log('info', 'HTTP server closed, draining database pools...');
