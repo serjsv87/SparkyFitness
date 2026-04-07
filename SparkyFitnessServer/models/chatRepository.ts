@@ -1,13 +1,46 @@
 import { getClient, getSystemClient } from '../db/poolManager.js';
 import { encrypt, decrypt, ENCRYPTION_KEY } from '../security/encryption.js';
 import { log } from '../config/logging.js';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function upsertAiServiceSetting(settingData: any) {
-  const client = await getClient(settingData.user_id); // User-specific operation
+
+export interface AiServiceSetting {
+  id?: string;
+  user_id?: string;
+  service_name: string;
+  service_type: string;
+  custom_url?: string;
+  system_prompt?: string;
+  is_active: boolean;
+  model_name?: string;
+  is_public?: boolean;
+  api_key?: string;
+  encrypted_api_key?: string;
+  api_key_iv?: string;
+  api_key_tag?: string;
+  source?: string;
+}
+
+export interface ChatHistoryEntry {
+  id?: string;
+  user_id: string;
+  content: string;
+  message_type: string;
+  metadata?: any;
+  session_id?: string;
+  message?: string;
+  response?: string;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export async function upsertAiServiceSetting(
+  settingData: AiServiceSetting
+): Promise<AiServiceSetting> {
+  const client = await getClient(settingData.user_id);
   try {
     let encryptedApiKey = settingData.encrypted_api_key || null;
     let apiKeyIv = settingData.api_key_iv || null;
     let apiKeyTag = settingData.api_key_tag || null;
+
     if (settingData.api_key) {
       const { encryptedText, iv, tag } = await encrypt(
         settingData.api_key,
@@ -17,8 +50,8 @@ async function upsertAiServiceSetting(settingData: any) {
       apiKeyIv = iv;
       apiKeyTag = tag;
     }
+
     if (settingData.id) {
-      // Update existing service
       const result = await client.query(
         `UPDATE ai_service_settings SET
           service_name = COALESCE($1, service_name), service_type = COALESCE($2, service_type), custom_url = $3,
@@ -43,7 +76,6 @@ async function upsertAiServiceSetting(settingData: any) {
       );
       return result.rows[0];
     } else {
-      // Insert new service
       const result = await client.query(
         `INSERT INTO ai_service_settings (
           user_id, service_name, service_type, custom_url, system_prompt,
@@ -68,17 +100,20 @@ async function upsertAiServiceSetting(settingData: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getAiServiceSettingForBackend(id: any, userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function getAiServiceSettingForBackend(
+  id: string,
+  userId: string
+): Promise<AiServiceSetting | null> {
+  const client = await getClient(userId);
   try {
-    // Try to get setting (can be user-specific or global)
     const result = await client.query(
       'SELECT * FROM ai_service_settings WHERE id = $1',
       [id]
     );
     const setting = result.rows[0];
     if (!setting) return null;
+
     let decryptedApiKey = null;
     if (
       setting.encrypted_api_key &&
@@ -96,6 +131,7 @@ async function getAiServiceSettingForBackend(id: any, userId: any) {
         log('error', 'Error decrypting API key for AI service setting:', id, e);
       }
     }
+
     const source = setting.is_public ? 'global' : 'user';
     log(
       'debug',
@@ -106,9 +142,12 @@ async function getAiServiceSettingForBackend(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getAiServiceSettingById(id: any, userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function getAiServiceSettingById(
+  id: string,
+  userId: string
+): Promise<any> {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       'SELECT id, service_name, service_type, custom_url, is_active, model_name FROM ai_service_settings WHERE id = $1',
@@ -119,9 +158,12 @@ async function getAiServiceSettingById(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteAiServiceSetting(id: any, userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function deleteAiServiceSetting(
+  id: string,
+  userId: string
+): Promise<boolean> {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       'DELETE FROM ai_service_settings WHERE id = $1 RETURNING id',
@@ -132,46 +174,48 @@ async function deleteAiServiceSetting(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getAiServiceSettingsByUserId(userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function getAiServiceSettingsByUserId(
+  userId: string
+): Promise<AiServiceSetting[]> {
+  const client = await getClient(userId);
   try {
-    // Get user-specific settings
     const userResult = await client.query(
       'SELECT id, service_name, service_type, custom_url, is_active, model_name, is_public, system_prompt FROM ai_service_settings WHERE is_public = FALSE AND user_id = $1 ORDER BY created_at DESC',
       [userId]
     );
-    // Get global settings (all authenticated users can read)
+
     const globalResult = await client.query(
       'SELECT id, service_name, service_type, custom_url, is_active, model_name, is_public, system_prompt FROM ai_service_settings WHERE is_public = TRUE ORDER BY created_at DESC',
       []
     );
-    // Combine results: user settings first, then public settings
-    // Add is_public flag to distinguish them
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const userSettings = userResult.rows.map((row: any) => ({
       ...row,
       is_public: false,
     }));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const publicSettings = globalResult.rows.map((row: any) => ({
       ...row,
       is_public: true,
     }));
+
     return [...userSettings, ...publicSettings];
   } finally {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getActiveAiServiceSetting(userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function getActiveAiServiceSetting(
+  userId: string
+): Promise<AiServiceSetting | null> {
+  const client = await getClient(userId);
   try {
-    // Priority 1: User-specific active setting
     const userResult = await client.query(
       'SELECT id, service_name, service_type, custom_url, is_active, model_name, is_public, system_prompt FROM ai_service_settings WHERE is_active = TRUE AND is_public = FALSE AND user_id = $1 ORDER BY created_at DESC LIMIT 1',
       [userId]
     );
+
     if (userResult.rows.length > 0) {
       const setting = userResult.rows[0];
       log(
@@ -180,11 +224,12 @@ async function getActiveAiServiceSetting(userId: any) {
       );
       return { ...setting, source: 'user' };
     }
-    // Priority 2: Database global active setting
+
     const globalResult = await client.query(
       'SELECT id, service_name, service_type, custom_url, is_active, model_name, is_public, system_prompt FROM ai_service_settings WHERE is_active = TRUE AND is_public = TRUE ORDER BY created_at DESC LIMIT 1',
       []
     );
+
     if (globalResult.rows.length > 0) {
       const setting = globalResult.rows[0];
       log(
@@ -193,14 +238,15 @@ async function getActiveAiServiceSetting(userId: any) {
       );
       return { ...setting, source: 'global' };
     }
+
     log('debug', `No active AI service setting found for user ${userId}`);
     return null;
   } finally {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function clearOldChatHistory(userId: any) {
+
+export async function clearOldChatHistory(userId: string): Promise<boolean> {
   const client = await getClient(userId);
   try {
     await client.query(
@@ -215,22 +261,25 @@ async function clearOldChatHistory(userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getChatHistoryByUserId(userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function getChatHistoryByUserId(userId: string): Promise<any[]> {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
-      'SELECT content, message_type, created_at FROM sparky_chat_history ORDER BY created_at ASC LIMIT 5',
-      []
+      'SELECT content, message_type, metadata, created_at FROM sparky_chat_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10',
+      [userId]
     );
-    return result.rows;
+    return result.rows.reverse();
   } finally {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getChatHistoryEntryById(id: any, userId: any) {
-  const client = await getClient(userId); // User-specific operation (RLS will handle access)
+
+export async function getChatHistoryEntryById(
+  id: string,
+  userId: string
+): Promise<any> {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       'SELECT * FROM sparky_chat_history WHERE id = $1',
@@ -241,9 +290,12 @@ async function getChatHistoryEntryById(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getChatHistoryEntryOwnerId(id: any, userId: any) {
-  const client = await getClient(userId); // User-specific operation (RLS will handle access)
+
+export async function getChatHistoryEntryOwnerId(
+  id: string,
+  userId: string
+): Promise<string | undefined> {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       'SELECT user_id FROM sparky_chat_history WHERE id = $1',
@@ -254,9 +306,13 @@ async function getChatHistoryEntryOwnerId(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function updateChatHistoryEntry(id: any, userId: any, updateData: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function updateChatHistoryEntry(
+  id: string,
+  userId: string,
+  updateData: any
+): Promise<any> {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       `UPDATE sparky_chat_history SET
@@ -284,9 +340,12 @@ async function updateChatHistoryEntry(id: any, userId: any, updateData: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteChatHistoryEntry(id: any, userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function deleteChatHistoryEntry(
+  id: string,
+  userId: string
+): Promise<boolean> {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       'DELETE FROM sparky_chat_history WHERE id = $1 RETURNING id',
@@ -297,9 +356,9 @@ async function deleteChatHistoryEntry(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function clearAllChatHistory(userId: any) {
-  const client = await getClient(userId); // User-specific operation
+
+export async function clearAllChatHistory(userId: string): Promise<boolean> {
+  const client = await getClient(userId);
   try {
     await client.query('DELETE FROM sparky_chat_history', []);
     return true;
@@ -307,32 +366,35 @@ async function clearAllChatHistory(userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function saveChatHistory(historyData: any) {
-  const client = await getClient(historyData.user_id); // User-specific operation
+
+export async function saveChatMessage(
+  userId: string,
+  content: string,
+  messageType: string,
+  metadata: any = null
+): Promise<boolean> {
+  const client = await getClient(userId);
   try {
     await client.query(
       `INSERT INTO sparky_chat_history (user_id, content, message_type, metadata, created_at)
        VALUES ($1, $2, $3, $4, now())`,
-      [
-        historyData.user_id,
-        historyData.content,
-        historyData.messageType,
-        historyData.metadata,
-      ]
+      [userId, content, messageType, metadata]
     );
     return true;
   } finally {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function upsertGlobalAiServiceSetting(settingData: any) {
-  const client = await getSystemClient(); // Use system client for global operations
+
+export async function upsertGlobalAiServiceSetting(
+  settingData: any
+): Promise<any> {
+  const client = await getSystemClient();
   try {
     let encryptedApiKey = settingData.encrypted_api_key || null;
     let apiKeyIv = settingData.api_key_iv || null;
     let apiKeyTag = settingData.api_key_tag || null;
+
     if (settingData.api_key) {
       const { encryptedText, iv, tag } = await encrypt(
         settingData.api_key,
@@ -342,8 +404,8 @@ async function upsertGlobalAiServiceSetting(settingData: any) {
       apiKeyIv = iv;
       apiKeyTag = tag;
     }
+
     if (settingData.id) {
-      // Update existing global service
       const result = await client.query(
         `UPDATE ai_service_settings SET
           service_name = $1, service_type = $2, custom_url = $3,
@@ -368,7 +430,6 @@ async function upsertGlobalAiServiceSetting(settingData: any) {
       );
       return result.rows[0];
     } else {
-      // Insert new global service
       const result = await client.query(
         `INSERT INTO ai_service_settings (
           user_id, is_public, service_name, service_type, custom_url, system_prompt,
@@ -392,8 +453,9 @@ async function upsertGlobalAiServiceSetting(settingData: any) {
     client.release();
   }
 }
-async function getGlobalAiServiceSettings() {
-  const client = await getSystemClient(); // Use system client for global operations
+
+export async function getGlobalAiServiceSettings(): Promise<any[]> {
+  const client = await getSystemClient();
   try {
     const result = await client.query(
       'SELECT id, service_name, service_type, custom_url, is_active, model_name, is_public, system_prompt, created_at, updated_at FROM ai_service_settings WHERE is_public = TRUE ORDER BY created_at DESC',
@@ -404,9 +466,9 @@ async function getGlobalAiServiceSettings() {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getGlobalAiServiceSettingById(id: any) {
-  const client = await getSystemClient(); // Use system client for global operations
+
+export async function getGlobalAiServiceSettingById(id: string): Promise<any> {
+  const client = await getSystemClient();
   try {
     const result = await client.query(
       'SELECT id, service_name, service_type, custom_url, is_active, model_name, is_public FROM ai_service_settings WHERE id = $1 AND is_public = TRUE',
@@ -417,9 +479,11 @@ async function getGlobalAiServiceSettingById(id: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteGlobalAiServiceSetting(id: any) {
-  const client = await getSystemClient(); // Use system client for global operations
+
+export async function deleteGlobalAiServiceSetting(
+  id: string
+): Promise<boolean> {
+  const client = await getSystemClient();
   try {
     const result = await client.query(
       'DELETE FROM ai_service_settings WHERE id = $1 AND is_public = TRUE RETURNING id',
@@ -430,24 +494,7 @@ async function deleteGlobalAiServiceSetting(id: any) {
     client.release();
   }
 }
-export { upsertAiServiceSetting };
-export { getAiServiceSettingById };
-export { getAiServiceSettingForBackend };
-export { deleteAiServiceSetting };
-export { getAiServiceSettingsByUserId };
-export { getActiveAiServiceSetting };
-export { clearOldChatHistory };
-export { getChatHistoryByUserId };
-export { getChatHistoryEntryById };
-export { getChatHistoryEntryOwnerId };
-export { updateChatHistoryEntry };
-export { deleteChatHistoryEntry };
-export { clearAllChatHistory };
-export { saveChatHistory };
-export { upsertGlobalAiServiceSetting };
-export { getGlobalAiServiceSettings };
-export { getGlobalAiServiceSettingById };
-export { deleteGlobalAiServiceSetting };
+
 export default {
   upsertAiServiceSetting,
   getAiServiceSettingById,
@@ -462,7 +509,7 @@ export default {
   updateChatHistoryEntry,
   deleteChatHistoryEntry,
   clearAllChatHistory,
-  saveChatHistory,
+  saveChatMessage,
   upsertGlobalAiServiceSetting,
   getGlobalAiServiceSettings,
   getGlobalAiServiceSettingById,

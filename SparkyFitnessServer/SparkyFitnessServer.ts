@@ -1,6 +1,5 @@
 import './env.js'; // Diese Zeile MUSS ganz oben stehen
 import path from 'path';
-
 import fs from 'fs';
 import { loadSecrets } from './utils/secretLoader.js';
 import { runPreflightChecks } from './utils/preflightChecks.js';
@@ -12,6 +11,7 @@ import cookieParser from 'cookie-parser';
 import { endPool } from './db/poolManager.js';
 import { log } from './config/logging.js';
 import { authenticate } from './middleware/authMiddleware.js';
+import onBehalfOfMiddleware from './middleware/onBehalfOfMiddleware.js';
 import foodRoutes from './routes/foodRoutes.js';
 // @ts-expect-error TS1192
 import v2FoodRoutes from './routes/v2/foodRoutes.js';
@@ -55,6 +55,7 @@ import globalSettingsRoutes from './routes/globalSettingsRoutes.js';
 import versionRoutes from './routes/versionRoutes.js';
 import onboardingRoutes from './routes/onboardingRoutes.js';
 import customNutrientRoutes from './routes/customNutrientRoutes.js';
+import telegramRoutes from './routes/telegramRoutes.js';
 import { applyMigrations } from './utils/dbMigrations.js';
 import { applyRlsPolicies } from './utils/applyRlsPolicies.js';
 import waterContainerRoutes from './routes/waterContainerRoutes.js';
@@ -97,6 +98,7 @@ import { cleanupSessions } from './auth.js';
 import withingsServiceCentral from './services/withingsService.js';
 import { upsertEnvOidcProvider } from './utils/oidcEnvConfig.js';
 import userRepository from './models/userRepository.js';
+import telegramBotService from './integrations/telegram/telegramBotService.js';
 
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
@@ -328,6 +330,22 @@ app.use((req, res, next) => {
 app.get('/api/ping', (_req, res) =>
   res.json({ status: 'ok', time: new Date().toISOString() })
 );
+
+// Apply onBehalfOfMiddleware to all non-public API routes
+app.use('/api', (req, res, next) => {
+  const publicApiRoutes = [
+    '/api/health',
+    '/api/version',
+    '/api/uploads',
+    '/api/ping',
+    '/api/telegram/webhook',
+  ];
+  if (publicApiRoutes.some(route => req.path.startsWith(route))) {
+    return next();
+  }
+  onBehalfOfMiddleware(req, res, next);
+});
+
 // Mounting all API routes
 app.use('/api/chat', chatRoutes);
 app.use('/api/foods', foodRoutes);
@@ -384,6 +402,14 @@ app.use('/api/review', reviewRoutes);
 app.use('/api/custom-nutrients', customNutrientRoutes);
 app.use('/api/adaptive-tdee', adaptiveTdeeRoutes);
 app.use('/api/meal-types', mealTypeRoutes);
+app.use('/api/telegram', telegramRoutes);
+
+// Telegram Webhook handler
+app.post('/api/telegram/webhook', (req, res) => {
+  telegramBotService.handleUpdate(req.body);
+  res.sendStatus(200);
+});
+
 // Swagger
 app.use(
   '/api/api-docs/swagger',
@@ -556,6 +582,14 @@ applyMigrations()
     scheduleFitbitSyncs();
     schedulePolarSyncs();
     scheduleStravaSyncs();
+
+    // Initialize Telegram Bot
+    telegramBotService
+      .initialize()
+      .catch((err) =>
+        log('error', '[TELEGRAM BOT] Failed to initialize bot:', err)
+      );
+
     if (process.env.SPARKY_FITNESS_ADMIN_EMAIL) {
       const adminUser = await userRepository.findUserByEmail(
         process.env.SPARKY_FITNESS_ADMIN_EMAIL
