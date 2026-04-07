@@ -395,37 +395,48 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
                       : aiService.custom_url
           }, Model: ${model}, API Key Provided: ${!!aiService.api_key}`
         );
-        response = await fetch(
-          aiService.service_type === 'openai'
-            ? 'https://api.openai.com/v1/chat/completions'
-            : aiService.service_type === 'openai_compatible'
-              ? `${aiService.custom_url}/chat/completions`
-              : aiService.service_type === 'mistral'
-                ? 'https://api.mistral.ai/v1/chat/completions'
-                : aiService.service_type === 'groq'
-                  ? 'https://api.groq.com/openai/v1/chat/completions'
-                  : aiService.service_type === 'openrouter'
-                    ? 'https://openrouter.ai/api/v1/chat/completions'
-                    : aiService.custom_url || '',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(aiService.service_type === 'openrouter' && {
-                'HTTP-Referer': 'https://sparky-fitness.com',
-                'X-Title': 'Sparky Fitness',
-              }),
-              ...(aiService.api_key && {
-                Authorization: `Bearer ${aiService.api_key}`,
-              }),
-            },
-            body: JSON.stringify({
-              model: model,
-              messages: messagesForAI,
-              temperature: 0.7,
-            }),
-          }
+        const aiTimeoutMs = 60_000;
+        const aiAbortController = new AbortController();
+        const aiTimeoutId = setTimeout(
+          () => aiAbortController.abort(),
+          aiTimeoutMs
         );
+        try {
+          response = await fetch(
+            aiService.service_type === 'openai'
+              ? 'https://api.openai.com/v1/chat/completions'
+              : aiService.service_type === 'openai_compatible'
+                ? `${aiService.custom_url}/chat/completions`
+                : aiService.service_type === 'mistral'
+                  ? 'https://api.mistral.ai/v1/chat/completions'
+                  : aiService.service_type === 'groq'
+                    ? 'https://api.groq.com/openai/v1/chat/completions'
+                    : aiService.service_type === 'openrouter'
+                      ? 'https://openrouter.ai/api/v1/chat/completions'
+                      : aiService.custom_url || '',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(aiService.service_type === 'openrouter' && {
+                  'HTTP-Referer': 'https://sparky-fitness.com',
+                  'X-Title': 'Sparky Fitness',
+                }),
+                ...(aiService.api_key && {
+                  Authorization: `Bearer ${aiService.api_key}`,
+                }),
+              },
+              body: JSON.stringify({
+                model: model,
+                messages: messagesForAI,
+                temperature: 0.7,
+              }),
+              signal: aiAbortController.signal,
+            }
+          );
+        } finally {
+          clearTimeout(aiTimeoutId);
+        }
 
         if (!response) {
           throw new Error('Fetch did not return a response object.');
