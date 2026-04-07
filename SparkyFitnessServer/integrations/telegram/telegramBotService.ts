@@ -132,7 +132,7 @@ class TelegramBotService {
       const user = await this.findUserAndLanguageByChatId(chatId);
       if (!user) return;
 
-      const t = this.getTranslations(user.language);
+      const t = getTranslations(user.language);
       return this.bot!.sendMessage(
         chatId,
         t.diary,
@@ -173,7 +173,7 @@ class TelegramBotService {
         return;
       }
 
-      const t = this.getTranslations(user.language);
+      const t = getTranslations(user.language);
 
       // Centralized button handling
       if (msg.text === t.profile) {
@@ -369,7 +369,7 @@ class TelegramBotService {
         [chatId.toString(), user.id]
       );
 
-      const t = this.getTranslations(user.language);
+      const t = getTranslations(user.language);
       await this.bot!.sendMessage(
         chatId,
         `✅ Success! Your account is now linked, ${user.name}. ${t.helpPrompt}`,
@@ -397,13 +397,11 @@ class TelegramBotService {
     try {
       const contentParts = await this.buildContentParts(chatId, msg);
       if (!contentParts) {
-        clearInterval(typingInterval);
         return;
       }
 
       const aiService = await chatRepository.getActiveAiServiceSetting(user.id);
       if (!aiService) {
-        clearInterval(typingInterval);
         return this.bot!.sendMessage(
           chatId,
           'No AI service configured. Please check your settings in the web app.'
@@ -446,8 +444,6 @@ class TelegramBotService {
         );
 
         if (response && response.intent === 'request_data') {
-          clearInterval(typingInterval);
-
           // Відправляємо користувачеві проміжне повідомлення ("Один момент...")
           const waitMsg = response.text || response.content;
           if (waitMsg && waitMsg.trim() !== '') {
@@ -474,8 +470,6 @@ class TelegramBotService {
 
       let response = await processAiTurn();
 
-      clearInterval(typingInterval);
-
       if (response && (response.text || response.content)) {
         const replyText = response.text || response.content;
         await chatRepository.saveChatMessage(
@@ -492,9 +486,10 @@ class TelegramBotService {
         }
       }
     } catch (e: any) {
-      clearInterval(typingInterval);
       log('error', '[TELEGRAM BOT] Error processing message:', e);
       this.bot!.sendMessage(chatId, `❌ AI Error: ${e.message}`);
+    } finally {
+      clearInterval(typingInterval);
     }
   }
 
@@ -606,12 +601,12 @@ class TelegramBotService {
         `[TELEGRAM BOT] Second AI response received. Intent: ${response?.intent}, Text: ${response?.text?.substring(0, 100)}...`
       );
 
-      clearInterval(typingInterval);
       return response;
     } catch (e: any) {
-      clearInterval(typingInterval);
       log('error', '[TELEGRAM BOT] Error handling data request:', e);
       this.bot!.sendMessage(chatId, `❌ AI Data Fetch Error: ${e.message}`);
+    } finally {
+      clearInterval(typingInterval);
     }
   }
 
@@ -726,7 +721,7 @@ class TelegramBotService {
         today
       );
 
-      const t = this.getTranslations(user.language);
+      const t = getTranslations(user.language);
 
       if (!exercises || exercises.length === 0) {
         return this.bot!.sendMessage(
@@ -996,66 +991,6 @@ class TelegramBotService {
     return `👤 <b>Profile Info</b>\nUser ID: ${userId}\nLanguage: ${lang}`;
   }
 
-  private getTranslations(lang: string): TranslationSet {
-    const dicts: { [key: string]: TranslationSet } = {
-      en: {
-        greeting: 'Hello',
-        helpPrompt: 'How can I help you today?',
-        welcome: 'Welcome!',
-        noRecentActivities: 'No recent activities.',
-        recentActivities: '🏋️ Recent Activities',
-        todayLog: '🍏 What did I eat?',
-        macros: '📊 Macros/Profile',
-        profile: '👤 Profile',
-        language: '🌐 Language',
-        diary: '📔 Diary Menu',
-        exercises: '🏋️ Exercises',
-        syncMenu: '🔄 Sync Menu',
-        back: '⬅️ Back',
-        langSet: '✅ Language updated to English.',
-        syncGarmin: 'Garmin Data Sync',
-        addWater: '+ 1🥛',
-      },
-      uk: {
-        greeting: 'Привіт',
-        helpPrompt: 'Чим я можу допомогти?',
-        welcome: 'Вітаємо!',
-        noRecentActivities: 'Останніх занять не знайдено.',
-        recentActivities: '🏋️ Останні заняття',
-        todayLog: "🍏 Що я з'їв?",
-        macros: '📊 Макроси/Профіль',
-        profile: '👤 Профіль',
-        language: '🌐 Мова',
-        diary: '📔 Меню щоденника',
-        exercises: '🏋️ Заняття',
-        syncMenu: '🔄 Меню синхронізації',
-        back: '⬅️ Назад',
-        langSet: '✅ Мову змінено на українську.',
-        syncGarmin: 'Синхронізація Garmin',
-        addWater: '+ 1🥛',
-      },
-      ru: {
-        greeting: 'Привет',
-        helpPrompt: 'Чем я могу помочь?',
-        welcome: 'Добро пожаловать!',
-        noRecentActivities: 'Последних занятий не найдено.',
-        recentActivities: '🏋️ Последние занятия',
-        todayLog: '🍏 Что я съел?',
-        macros: '📊 Макросы/Профиль',
-        profile: '👤 Профиль',
-        language: '🌐 Язык',
-        diary: '📔 Меню дневника',
-        exercises: '🏋️ Занятия',
-        syncMenu: '🔄 Меню синхронизации',
-        back: '⬅️ Назад',
-        langSet: '✅ Язык изменен на русский.',
-        syncGarmin: 'Синхронизация Garmin',
-        addWater: '+ 1🥛',
-      },
-    };
-    return dicts[lang] || dicts.en;
-  }
-
   private getMainMenuKeyboard(
     t: TranslationSet
   ): TelegramBot.SendMessageOptions {
@@ -1101,7 +1036,7 @@ class TelegramBotService {
   }
 
   private async showSyncMenu(chatId: number, lang: string): Promise<void> {
-    const t = this.getTranslations(lang);
+    const t = getTranslations(lang);
     await this.bot!.sendMessage(
       chatId,
       'Оберіть платформу для синхронізації:',

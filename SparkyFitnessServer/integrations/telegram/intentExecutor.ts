@@ -5,6 +5,16 @@
  */
 
 import { log } from '../../config/logging';
+
+/** ml per unit for water conversion */
+const WATER_ML_PER_UNIT: Record<string, number> = {
+  oz: 29.5735,
+  cup: 240,
+  glass: 240,
+  ml: 1,
+};
+const DEFAULT_WATER_ML_PER_UNIT = 240;
+const DEFAULT_DRINK_ML = 250;
 import * as measurementService from '../../services/measurementService';
 import * as measurementRepository from '../../models/measurementRepository';
 import * as foodEntryService from '../../services/foodEntryService';
@@ -150,14 +160,13 @@ export async function executeWater(
     const unit = data.unit || 'glass';
 
     // Convert to ml
-    const mlMap = { oz: 29.5735, cup: 240, glass: 240, ml: 1 };
-    const mlPerUnit = (mlMap as any)[unit] || 240;
+    const mlPerUnit = WATER_ML_PER_UNIT[unit] ?? DEFAULT_WATER_ML_PER_UNIT;
     const totalMl = glassesOrMl * mlPerUnit;
 
     // upsertWaterIntake takes change_drinks (drinks count), not ml directly.
     // We pass ml as "drinks" but with no container — service will use default (250ml/drink).
     // So we convert ml → drinks using default 250ml/drink.
-    const drinks = totalMl / 250;
+    const drinks = totalMl / DEFAULT_DRINK_ML;
     await measurementService.upsertWaterIntake(
       userId,
       userId,

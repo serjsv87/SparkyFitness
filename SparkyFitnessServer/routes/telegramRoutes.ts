@@ -106,21 +106,26 @@ router.post(
 );
 
 /**
- * POST Telegram Webhook (Insecure URL, but validated internally)
+ * POST Telegram Webhook
+ * Verified via X-Telegram-Bot-Api-Secret-Token header when TELEGRAM_WEBHOOK_SECRET is set.
  */
 router.post('/webhook', (req: Request, res: Response) => {
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (secret) {
+    const incoming = req.headers['x-telegram-bot-api-secret-token'];
+    if (!incoming || incoming !== secret) {
+      log('warn', '[TELEGRAM] Webhook rejected: invalid secret token');
+      return res.sendStatus(403);
+    }
+  }
+
   try {
-    // Validate incoming update with Zod
     const validatedData = TelegramWebhookSchema.parse(req.body);
-
-    // Pass to bot service
     telegramBotService.handleUpdate(validatedData);
-
     res.sendStatus(200);
   } catch (error: any) {
     log('error', `Telegram webhook validation failed: ${error.message}`);
-    // Still return 200 to Telegram to prevent retries of bad data,
-    // but we've logged the error.
+    // Return 200 to prevent Telegram from retrying bad data
     res.sendStatus(200);
   }
 });
