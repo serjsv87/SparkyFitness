@@ -1065,19 +1065,49 @@ async function deleteExerciseEntriesByEntrySourceAndDate(
     client.release();
   }
 }
-export { upsertExerciseEntryData };
-export { _createExerciseEntryWithClient };
-export { createExerciseEntry };
-export { getExerciseEntryById };
-export { getExerciseEntryOwnerId };
-export { updateExerciseEntry };
-export { updateExerciseEntriesDateByPresetEntryIdWithClient };
-export { deleteExerciseEntriesByPresetEntryIdWithClient };
-export { deleteExerciseEntry };
-export { getExerciseEntriesByDate };
-export { getExerciseProgressData };
-export { getExerciseHistory };
-export { deleteExerciseEntriesByEntrySourceAndDate };
+
+async function getExerciseEntriesByDateRange(userId: any, startDate: any, endDate: any) {
+  const client = await getClient(userId);
+  try {
+    const result = await client.query(
+      `SELECT ee.*,
+              COALESCE(
+                (SELECT json_agg(set_data ORDER BY set_data.set_number)
+                 FROM (
+                   SELECT ees.id, ees.set_number, ees.set_type, ees.reps, ees.weight, ees.duration, ees.rest_time, ees.notes, ees.rpe
+                   FROM exercise_entry_sets ees
+                   WHERE ees.exercise_entry_id = ee.id
+                 ) AS set_data
+                ), '[]'::json
+              ) AS sets
+       FROM exercise_entries ee
+       WHERE ee.user_id = $1 AND ee.entry_date BETWEEN $2 AND $3
+       ORDER BY ee.entry_date ASC, ee.sort_order ASC, ee.created_at ASC`,
+      [userId, startDate, endDate]
+    );
+    return result.rows;
+  } finally {
+    client.release();
+  }
+}
+
+export {
+  upsertExerciseEntryData,
+  _createExerciseEntryWithClient,
+  createExerciseEntry,
+  getExerciseEntryById,
+  getExerciseEntryOwnerId,
+  updateExerciseEntry,
+  updateExerciseEntriesDateByPresetEntryIdWithClient,
+  deleteExerciseEntriesByPresetEntryIdWithClient,
+  deleteExerciseEntry,
+  getExerciseEntriesByDate,
+  getExerciseEntriesByDateRange,
+  getExerciseProgressData,
+  getExerciseHistory,
+  deleteExerciseEntriesByEntrySourceAndDate,
+};
+
 export default {
   upsertExerciseEntryData,
   _createExerciseEntryWithClient,
@@ -1089,6 +1119,7 @@ export default {
   deleteExerciseEntriesByPresetEntryIdWithClient,
   deleteExerciseEntry,
   getExerciseEntriesByDate,
+  getExerciseEntriesByDateRange,
   getExerciseProgressData,
   getExerciseHistory,
   deleteExerciseEntriesByEntrySourceAndDate,

@@ -337,6 +337,29 @@ class TelegramBotService {
             this.activeGarminSyncs.delete(chatId);
           }
           return this.bot!.answerCallbackQuery(query.id).catch(() => {});
+        } else if (type === 'mfp') {
+          const t = getTranslations(user.language);
+          try {
+            // Check if service exists without merging full branch
+            const mfpSyncService = require('../../services/mfpSyncService');
+            const tz = (user as any).timezone || 'UTC';
+            const today = todayInZone(tz);
+            
+            await this.bot!.sendMessage(chatId, t.syncMFPInProgress).catch(() => {});
+            await mfpSyncService.syncDailyNutritionToMFP(user.id, today);
+            await this.bot!.sendMessage(chatId, t.syncMFPSuccess).catch(() => {});
+          } catch (error: any) {
+            if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('mfpSyncService')) {
+              await this.bot!.sendMessage(chatId, t.syncMFPPendingMerge).catch(() => {});
+            } else {
+              log('error', `[TELEGRAM BOT] MFP sync error: ${error.message}`);
+              await this.bot!.sendMessage(
+                chatId,
+                t.syncMFPError.replace('{{error}}', error.message)
+              ).catch(() => {});
+            }
+          }
+          return this.bot!.answerCallbackQuery(query.id).catch(() => {});
         }
       }
     });
@@ -1044,6 +1067,7 @@ class TelegramBotService {
         reply_markup: {
           inline_keyboard: [
             [{ text: t.syncGarmin, callback_data: 'sync:garmin' }],
+            [{ text: t.syncMFP, callback_data: 'sync:mfp' }],
             [{ text: t.back, callback_data: 'main_menu' }],
           ],
         },
