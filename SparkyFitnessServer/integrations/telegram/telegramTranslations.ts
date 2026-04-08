@@ -24,6 +24,11 @@ export interface TranslationSet {
   back: string;
   langSet: string;
   syncGarmin: string;
+  syncMFP: string;
+  syncMFPInProgress: string;
+  syncMFPSuccess: string;
+  syncMFPError: string;
+  syncMFPPendingMerge: string;
   addWater: string;
   [key: string]: string;
 }
@@ -46,6 +51,11 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       back: '⬅️ Back',
       langSet: '✅ Language updated to English.',
       syncGarmin: 'Garmin Data Sync',
+      syncMFP: 'Sync with FitnessPal',
+      syncMFPInProgress: '🔄 Syncing with MyFitnessPal (today)...',
+      syncMFPSuccess: '✅ Today\'s data successfully sent to MyFitnessPal!',
+      syncMFPError: '❌ MyFitnessPal sync error: {{error}}',
+      syncMFPPendingMerge: '⚠️ MyFitnessPal integration is pending main branch merge.',
       addWater: '+ 1🥛',
     },
     uk: {
@@ -64,6 +74,11 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       back: '⬅️ Назад',
       langSet: '✅ Мову змінено на українську.',
       syncGarmin: 'Синхронізація Garmin',
+      syncMFP: 'Синхронізація FitnessPal',
+      syncMFPInProgress: '🔄 Синхронізація з MyFitnessPal (сьогодні)...',
+      syncMFPSuccess: '✅ Дані за сьогодні успішно відправлені в MyFitnessPal!',
+      syncMFPError: '❌ Помилка синхронізації MFP: {{error}}',
+      syncMFPPendingMerge: '⚠️ Інтеграція MyFitnessPal очікує злиття з основною гілкою.',
       addWater: '+ 1🥛',
     },
     ru: {
@@ -82,6 +97,11 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       back: '⬅️ Назад',
       langSet: '✅ Язык изменен на русский.',
       syncGarmin: 'Синхронизация Garmin',
+      syncMFP: 'Синхронизация FitnessPal',
+      syncMFPInProgress: '🔄 Синхронизация с MyFitnessPal (сегодня)...',
+      syncMFPSuccess: '✅ Данные за сегодня успешно отправлены в MyFitnessPal!',
+      syncMFPError: '❌ Ошибка синхронизации MFP: {{error}}',
+      syncMFPPendingMerge: '⚠️ Интеграция MyFitnessPal ожидает слияния с основной веткой.',
       addWater: '+ 1🥛',
     },
   };
