@@ -414,13 +414,17 @@ async function _createExerciseEntryWithClient(
     // Check for existing entry
     // treat entries without a preset ID as unique if their exercise_id, entry_date, and source match.
     // For entries within a preset, we always allow duplicates (no uniqueness check).
-    const syncDuplicateCheck = entryData.source_id ? true : false;
-    const skipManualDuplicateCheck = [
+    const syncSources = [
       'HealthKit',
       'Health Connect',
       'Fitbit',
       'Strava',
-    ].includes(entrySource);
+      'garmin',
+      'Withings',
+      'Apple Health',
+    ];
+    const isSyncSource = syncSources.includes(entrySource);
+    const skipManualDuplicateCheck = isSyncSource;
 
     let existingEntryResult;
 
@@ -432,9 +436,54 @@ async function _createExerciseEntryWithClient(
       );
     }
 
-    // 2. If no source_id match and NOT a sync source, fall back to "Manual" deduplication (name/date).
-    // Skip this fallback when source_id was provided: a source_id miss means it's a genuinely new
-    // activity (different activityId), so we must INSERT rather than match on exercise_id + date.
+    // 2. Cross-source deduplication for sync sources:
+    // If no exact source/source_id match, look for an entry from ANY source on the same date/duration
+    if (
+      !existingEntryResult?.rows?.length &&
+      isSyncSource &&
+      entryData.duration_minutes
+    ) {
+      // First try matching by exact exercise_id
+      existingEntryResult = await client.query(
+        'SELECT id FROM exercise_entries WHERE user_id = $1 AND exercise_id = $2 AND entry_date = $3 AND ABS(duration_minutes - $4) < 1.5',
+        [
+          userId,
+          entryData.exercise_id,
+          entryData.entry_date,
+          entryData.duration_minutes,
+        ]
+      );
+
+      // If still not found, try matching by exercise_name or category if it looks like the same activity on the same day
+      if (!existingEntryResult?.rows?.length) {
+        // Fetch snapshot name/category for fuzzy match
+        const snapshotResult = await client.query(
+          'SELECT name, category FROM exercises WHERE id = $1',
+          [entryData.exercise_id]
+        );
+        const snapshot = snapshotResult.rows[0];
+
+        if (snapshot) {
+          existingEntryResult = await client.query(
+            `SELECT id FROM exercise_entries 
+             WHERE user_id = $1 AND entry_date = $2 
+             AND ABS(duration_minutes - $3) < 1.0
+             AND (exercise_id = $4 OR exercise_name = $5 OR category = $6)
+             LIMIT 1`,
+            [
+              userId,
+              entryData.entry_date,
+              entryData.duration_minutes,
+              entryData.exercise_id,
+              entryData.exercise_name || snapshot.name,
+              snapshot.category,
+            ]
+          );
+        }
+      }
+    }
+
+    // 3. If no match yet and NOT a sync source (or if sync source didn't find a cross-source match), fall back to "Manual" deduplication.
     if (
       !existingEntryResult?.rows?.length &&
       !exercisePresetEntryId &&
