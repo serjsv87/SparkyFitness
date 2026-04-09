@@ -4,7 +4,7 @@ import globalSettingsRepository from '../../models/globalSettingsRepository';
 import * as chatService from '../../services/chatService';
 import * as chatRepository from '../../models/chatRepository';
 import * as exerciseEntry from '../../models/exerciseEntry';
-import * as foodEntry from '../../models/foodEntry';
+import * as foodEntryRepository from '../../models/foodEntry';
 import * as poolManager from '../../db/poolManager';
 import { executeIntent } from './intentExecutor';
 import { TelegramAiService } from './telegramAiService';
@@ -361,6 +361,55 @@ class TelegramBotService {
           }
           return this.bot!.answerCallbackQuery(query.id).catch(() => {});
         }
+      } else if (action === 'del_f') {
+        const foodEntryId = type;
+        const t = getTranslations(user.language);
+        try {
+          await foodEntryRepository.deleteFoodEntry(user.id, foodEntryId);
+          await this.bot!.answerCallbackQuery(query.id, {
+            text: t.deletedSuccess,
+          }).catch(() => {});
+          // Optional: update the message to remove the deleted item or just delete the message
+          await this.bot!.deleteMessage(chatId, query.message!.message_id).catch(
+            () => false
+          );
+          await this.handleDirectTodayLog(chatId, user);
+        } catch (e: any) {
+          log('error', `[TELEGRAM BOT] Delete food error: ${e.message}`);
+          await this.bot!.answerCallbackQuery(query.id, {
+            text: t.deleteError,
+            show_alert: true,
+          }).catch(() => {});
+        }
+      } else if (action === 'del_m') {
+        const [id, mType] = type.split(',');
+        const t = getTranslations(user.language);
+        try {
+          // Check if it's a check-in measurement or custom
+          const measurementService = require('../../services/measurementService');
+          if (mType === 'weight' || mType === 'neck' || mType === 'waist' || mType === 'hips' || mType === 'steps' || mType === 'height') {
+            await measurementService.deleteCheckInMeasurements(user.id, id);
+          } else {
+            await measurementService.deleteCustomMeasurementEntry(user.id, id);
+          }
+          await this.bot!.answerCallbackQuery(query.id, {
+            text: t.deletedSuccess,
+          }).catch(() => {});
+          await this.bot!.deleteMessage(chatId, query.message!.message_id).catch(
+            () => false
+          );
+        } catch (e: any) {
+          log('error', `[TELEGRAM BOT] Delete measurement error: ${e.message}`);
+          await this.bot!.answerCallbackQuery(query.id, {
+            text: t.deleteError,
+            show_alert: true,
+          }).catch(() => {});
+        }
+      } else if (action === 'cancel_del') {
+        await this.bot!.deleteMessage(chatId, query.message!.message_id).catch(
+          () => false
+        );
+        return this.bot!.answerCallbackQuery(query.id).catch(() => {});
       }
     });
 
@@ -562,7 +611,7 @@ class TelegramBotService {
             .join('\n');
         }
       } else if (type.includes('food')) {
-        const foods = await foodEntry.getFoodEntriesByDateRange(
+        const foods = await foodEntryRepository.getFoodEntriesByDateRange(
           user.id,
           startDate,
           endDate
@@ -652,6 +701,40 @@ class TelegramBotService {
 
       if (result && result.message) {
         await this.bot!.sendMessage(chatId, result.message);
+      } else if (result && result.intent === 'confirm_deletion') {
+        const t = getTranslations(user.language);
+        const matches = result.matches || [];
+        if (matches.length === 0) return;
+
+        let confirmText = `❓ <b>${t.deleteConfirm}</b>\n\n`;
+        const buttons: TelegramBot.InlineKeyboardButton[][] = [];
+
+        for (const m of matches) {
+          if (m.type === 'food') {
+            confirmText += `🍏 ${m.name} (${Math.round(m.calories)} kcal)\n`;
+            buttons.push([
+              {
+                text: `🗑️ ${t.deleteRecord}: ${m.name}`,
+                callback_data: `del_f:${m.id}`,
+              },
+            ]);
+          } else if (m.type === 'measurement') {
+            confirmText += `⚖️ ${m.subType}: ${m.value} ${m.unit || ''}\n`;
+            buttons.push([
+              {
+                text: `🗑️ ${t.deleteRecord}: ${m.subType}`,
+                callback_data: `del_m:${m.id},${m.subType}`,
+              },
+            ]);
+          }
+        }
+
+        buttons.push([{ text: t.cancelDeleteBtn, callback_data: 'cancel_del' }]);
+
+        await this.bot!.sendMessage(chatId, confirmText, {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: buttons },
+        });
       }
     } catch (e: any) {
       log('error', '[TELEGRAM BOT] Intent execution error:', e);
@@ -719,7 +802,26 @@ class TelegramBotService {
       }
 
       text += `<b>Всього:</b> ${Math.round(totalCals)} ккал`;
-      this.bot!.sendMessage(chatId, text, { parse_mode: 'HTML' });
+
+      const t = getTranslations(user.language);
+      const buttons: TelegramBot.InlineKeyboardButton[][] = [];
+      for (const [type, items] of Object.entries(grouped)) {
+        if (items.length > 0) {
+          items.forEach((i) => {
+            buttons.push([
+              {
+                text: `🗑️ ${i.food_name || i.name} (${Math.round(i.calories)} kcal)`,
+                callback_data: `del_f:${i.id}`,
+              },
+            ]);
+          });
+        }
+      }
+
+      this.bot!.sendMessage(chatId, text, {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: buttons },
+      });
     } catch (e: any) {
       this.bot!.sendMessage(chatId, `❌ Помилка: ${e.message}`);
     }

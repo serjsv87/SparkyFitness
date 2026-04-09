@@ -30,6 +30,12 @@ export interface TranslationSet {
   syncMFPError: string;
   syncMFPPendingMerge: string;
   addWater: string;
+  deleteConfirm: string;
+  deletedSuccess: string;
+  deleteError: string;
+  confirmDeleteBtn: string;
+  cancelDeleteBtn: string;
+  deleteRecord: string;
   [key: string]: string;
 }
 
@@ -57,6 +63,12 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       syncMFPError: '❌ MyFitnessPal sync error: {{error}}',
       syncMFPPendingMerge: '⚠️ MyFitnessPal integration is pending main branch merge.',
       addWater: '+ 1🥛',
+      deleteConfirm: 'Are you sure you want to delete this record?',
+      deletedSuccess: '✅ Record deleted successfully.',
+      deleteError: '❌ Error deleting record.',
+      confirmDeleteBtn: 'Confirm ✅',
+      cancelDeleteBtn: 'Cancel ❌',
+      deleteRecord: 'Delete 🗑️',
     },
     uk: {
       greeting: 'Привіт',
@@ -80,6 +92,12 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       syncMFPError: '❌ Помилка синхронізації MFP: {{error}}',
       syncMFPPendingMerge: '⚠️ Інтеграція MyFitnessPal очікує злиття з основною гілкою.',
       addWater: '+ 1🥛',
+      deleteConfirm: 'Ви впевнені, що хочете видалити цей запис?',
+      deletedSuccess: '✅ Запис успішно видалено.',
+      deleteError: '❌ Помилка при видаленні запису.',
+      confirmDeleteBtn: 'Підтвердити ✅',
+      cancelDeleteBtn: 'Скасувати ❌',
+      deleteRecord: 'Видалити 🗑️',
     },
     ru: {
       greeting: 'Привет',
@@ -103,6 +121,12 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       syncMFPError: '❌ Ошибка синхронизации MFP: {{error}}',
       syncMFPPendingMerge: '⚠️ Интеграция MyFitnessPal ожидает слияния с основной веткой.',
       addWater: '+ 1🥛',
+      deleteConfirm: 'Вы уверены, что хотите удалить эту запись?',
+      deletedSuccess: '✅ Запись успешно удалена.',
+      deleteError: '❌ Ошибка при удалении записи.',
+      confirmDeleteBtn: 'Подтвердить ✅',
+      cancelDeleteBtn: 'Отмена ❌',
+      deleteRecord: 'Удалить 🗑️',
     },
   };
   return dicts[lang] || dicts.en;
