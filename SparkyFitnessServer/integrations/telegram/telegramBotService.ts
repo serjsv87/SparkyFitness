@@ -365,7 +365,7 @@ class TelegramBotService {
         const foodEntryId = type;
         const t = getTranslations(user.language);
         try {
-          await foodEntryRepository.deleteFoodEntry(user.id, foodEntryId);
+          await foodEntryRepository.deleteFoodEntry(foodEntryId, user.id);
           await this.bot!.answerCallbackQuery(query.id, {
             text: t.deletedSuccess,
           }).catch(() => {});

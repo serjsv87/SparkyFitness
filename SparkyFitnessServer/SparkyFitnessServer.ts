@@ -310,7 +310,7 @@ app.use((req, res, next) => {
     '/api/uploads',
     '/uploads',
     '/api/ping',
-    '/api/telegram/webhook',
+    '/api/telegram',
   ];
   const isPublic = publicRoutes.some((route) => {
     // Exact match or subpath match with trailing slash to prevent partial matches
@@ -403,12 +403,6 @@ app.use('/api/custom-nutrients', customNutrientRoutes);
 app.use('/api/adaptive-tdee', adaptiveTdeeRoutes);
 app.use('/api/meal-types', mealTypeRoutes);
 app.use('/api/telegram', telegramRoutes);
-
-// Telegram Webhook handler
-app.post('/api/telegram/webhook', (req, res) => {
-  telegramBotService.handleUpdate(req.body);
-  res.sendStatus(200);
-});
 
 // Swagger
 app.use(
@@ -584,11 +578,7 @@ applyMigrations()
     scheduleStravaSyncs();
 
     // Initialize Telegram Bot
-    telegramBotService
-      .initialize()
-      .catch((err) =>
-        log('error', '[TELEGRAM BOT] Failed to initialize bot:', err)
-      );
+    await telegramBotService.initialize();
 
     if (process.env.SPARKY_FITNESS_ADMIN_EMAIL) {
       const adminUser = await userRepository.findUserByEmail(
