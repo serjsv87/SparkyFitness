@@ -637,6 +637,12 @@ async function copyAllFoodEntriesFromYesterday(
     throw error;
   }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getDailyNutritionByCategory(userId: any, date: any) {
+  return await foodRepository.getDailyNutritionByCategory(userId, date);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getDailyNutritionSummary(userId: any, date: any) {
   try {
@@ -793,19 +799,44 @@ async function createFoodEntryMeal(
         glycemic_index: variant.glycemic_index,
         custom_nutrients: sanitizeCustomNutrients(variant.custom_nutrients),
       };
-      // Scale the food quantity by the multiplier
-      const scaledQuantity = foodItem.quantity * multiplier;
+      // Note: We are deliberatly NOT applying inline overrides here for meal components.
+      // Scaling nutrition based on multiplier
+      const scaleNutrition = (val: any) =>
+        val !== null ? parseFloat((val * multiplier).toFixed(4)) : null;
       entriesToCreate.push({
-        user_id: newFoodEntryMeal.user_id, // Use the user_id from the created meal (target user)
-        created_by_user_id: actingUserId,
+        user_id: mealData.user_id || authenticatedUserId,
         food_id: foodItem.food_id,
         meal_type_id: resolvedMealTypeId,
-        quantity: scaledQuantity, // SCALED quantity
-        unit: foodItem.unit,
-        variant_id: foodItem.variant_id,
+        quantity: scaleNutrition(variant.serving_size), // Scale serving quantity
+        unit: variant.serving_unit,
         entry_date: mealData.entry_date,
-        food_entry_meal_id: newFoodEntryMeal.id, // Link to the new food_entry_meals ID
-        ...snapshot,
+        variant_id: foodItem.variant_id,
+        created_by_user_id: actingUserId,
+        food_entry_meal_id: newFoodEntryMeal.id, // Reference to parent meal
+        // Scaled snapshot data
+        food_name: snapshot.food_name,
+        brand_name: snapshot.brand_name,
+        serving_size: snapshot.serving_size,
+        serving_unit: snapshot.serving_unit,
+        calories: scaleNutrition(snapshot.calories),
+        protein: scaleNutrition(snapshot.protein),
+        carbs: scaleNutrition(snapshot.carbs),
+        fat: scaleNutrition(snapshot.fat),
+        saturated_fat: scaleNutrition(snapshot.saturated_fat),
+        polyunsaturated_fat: scaleNutrition(snapshot.polyunsaturated_fat),
+        monounsaturated_fat: scaleNutrition(snapshot.monounsaturated_fat),
+        trans_fat: scaleNutrition(snapshot.trans_fat),
+        cholesterol: scaleNutrition(snapshot.cholesterol),
+        sodium: scaleNutrition(snapshot.sodium),
+        potassium: scaleNutrition(snapshot.potassium),
+        dietary_fiber: scaleNutrition(snapshot.dietary_fiber),
+        sugars: scaleNutrition(snapshot.sugars),
+        vitamin_a: scaleNutrition(snapshot.vitamin_a),
+        vitamin_c: scaleNutrition(snapshot.vitamin_c),
+        calcium: scaleNutrition(snapshot.calcium),
+        iron: scaleNutrition(snapshot.iron),
+        glycemic_index: snapshot.glycemic_index,
+        custom_nutrients: sanitizeCustomNutrients(snapshot.custom_nutrients),
       });
     }
     if (entriesToCreate.length > 0) {
@@ -813,18 +844,14 @@ async function createFoodEntryMeal(
         entriesToCreate,
         authenticatedUserId
       );
-      log(
-        'info',
-        `Created ${entriesToCreate.length} component food entries for food_entry_meal ${newFoodEntryMeal.id}.`
-      );
     }
-    return newFoodEntryMeal;
-  } catch (error) {
-    log(
-      'error',
-      `Error creating food entry meal for user ${authenticatedUserId}:`,
-      error
+    // 3. Return the created food_entry_meal (with calculated totals)
+    return await foodEntryMealRepository.getFoodEntryMealById(
+      newFoodEntryMeal.id,
+      authenticatedUserId
     );
+  } catch (error) {
+    log('error', 'Error in createFoodEntryMeal:', error);
     throw error;
   }
 }
@@ -836,584 +863,177 @@ async function updateFoodEntryMeal(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   foodEntryMealId: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updatedMealData: any
+  mealData: any
 ) {
   log(
     'info',
-    `updateFoodEntryMeal in foodEntryService: foodEntryMealId: ${foodEntryMealId}, updatedMealData: ${JSON.stringify(updatedMealData)}, authenticatedUserId: ${authenticatedUserId}, actingUserId: ${actingUserId}`
+    `updateFoodEntryMeal in foodEntryService: authenticatedUserId: ${authenticatedUserId}, actingUserId: ${actingUserId}, foodEntryMealId: ${foodEntryMealId}, mealData: ${JSON.stringify(mealData)}`
   );
   try {
-    // 1. Update the parent food_entry_meals record's metadata
-    const updatedFoodEntryMeal =
-      await foodEntryMealRepository.updateFoodEntryMeal(
-        foodEntryMealId,
-        {
-          name: updatedMealData.name,
-          description: updatedMealData.description,
-          meal_type: updatedMealData.meal_type, // Also allow updating meal type
-          entry_date: updatedMealData.entry_date, // And entry date
-          meal_template_id: updatedMealData.meal_template_id, // Pass meal_template_id
-          quantity: updatedMealData.quantity, // Update quantity
-          unit: updatedMealData.unit, // Update unit
-        },
-        authenticatedUserId
-      );
-    const resolvedMealTypeId = updatedFoodEntryMeal.meal_type_id;
-    if (!updatedFoodEntryMeal) {
-      throw new Error('Food entry meal not found or not authorized to update.');
-    }
-    // 2. Delete existing component food_entries
-    await foodRepository.deleteFoodEntryComponentsByFoodEntryMealId(
+    const existingMeal = await foodEntryMealRepository.getFoodEntryMealById(
       foodEntryMealId,
       authenticatedUserId
     );
-    log(
-      'debug',
-      `Deleted existing component food entries for food_entry_meal ${foodEntryMealId}.`
-    );
-    log('info', '[DEBUG] updateFoodEntryMeal Service Data:', updatedMealData); // DEBUG LOG
-    // Calculate portion multiplier
-    // Foods from getFoodEntryMealWithComponents now have BASE (unscaled) quantities,
-    // so we just apply the new quantity as the multiplier
-    let multiplier = 1.0;
-    const newQuantity = updatedMealData.quantity || 1.0;
-    if (updatedMealData.meal_template_id) {
-      // Fetch meal template to get reference serving size
-      const mealTemplate = await mealService.getMealById(
-        authenticatedUserId,
-        updatedMealData.meal_template_id
-      );
-      if (mealTemplate && mealTemplate.serving_size) {
-        const referenceServingSize = mealTemplate.serving_size || 1.0;
-        if (updatedMealData.unit === 'serving') {
-          multiplier = newQuantity;
-        } else {
-          multiplier = newQuantity / referenceServingSize;
-        }
-        log(
-          'info',
-          `Update portion scaling (with template): multiplier ${multiplier} (consumed: ${newQuantity}, reference: ${referenceServingSize})`
-        );
-      }
-    } else {
-      multiplier = 1.0;
-      log(
-        'info',
-        `Update portion scaling (no template): multiplier ${multiplier}`
-      );
+    if (!existingMeal) {
+      throw new Error('Food entry meal not found.');
     }
-    // 3. Create new component food_entries records
-    const entriesToCreate = [];
-    for (const foodItem of updatedMealData.foods) {
-      const food = await foodRepository.getFoodById(
-        foodItem.food_id,
-        authenticatedUserId
-      );
-      if (!food) {
-        log(
-          'warn',
-          `Food with ID ${foodItem.food_id} not found when updating food entry meal. Skipping.`
-        );
-        continue;
-      }
-      const variant = await foodRepository.getFoodVariantById(
-        foodItem.variant_id,
-        authenticatedUserId
-      );
-      if (!variant) {
-        log(
-          'warn',
-          `Food variant with ID ${foodItem.variant_id} not found for food ${foodItem.food_id} when updating food entry meal. Skipping.`
-        );
-        continue;
-      }
-      const snapshot = {
-        food_name: food.name,
-        brand_name: food.brand,
-        serving_size: variant.serving_size,
-        serving_unit: variant.serving_unit,
-        calories: variant.calories,
-        protein: variant.protein,
-        carbs: variant.carbs,
-        fat: variant.fat,
-        saturated_fat: variant.saturated_fat,
-        polyunsaturated_fat: variant.polyunsaturated_fat,
-        monounsaturated_fat: variant.monounsaturated_fat,
-        trans_fat: variant.trans_fat,
-        cholesterol: variant.cholesterol,
-        sodium: variant.sodium,
-        potassium: variant.potassium,
-        dietary_fiber: variant.dietary_fiber,
-        sugars: variant.sugars,
-        vitamin_a: variant.vitamin_a,
-        vitamin_c: variant.vitamin_c,
-        calcium: variant.calcium,
-        iron: variant.iron,
-        glycemic_index: variant.glycemic_index,
-        custom_nutrients: sanitizeCustomNutrients(variant.custom_nutrients),
-      };
-      // Scale the food quantity
-      const scaledQuantity = foodItem.quantity * multiplier;
-      entriesToCreate.push({
-        user_id: authenticatedUserId,
-        created_by_user_id: actingUserId,
-        food_id: foodItem.food_id,
-        meal_type_id: resolvedMealTypeId,
-        quantity: scaledQuantity, // SCALED quantity
-        unit: foodItem.unit,
-        variant_id: foodItem.variant_id,
-        entry_date: updatedMealData.entry_date,
-        food_entry_meal_id: foodEntryMealId, // Link to the existing food_entry_meals ID
-        ...snapshot,
-      });
-    }
-    if (entriesToCreate.length > 0) {
-      await foodRepository.bulkCreateFoodEntries(
-        entriesToCreate,
-        authenticatedUserId
-      );
-      log(
-        'info',
-        `Recreated ${entriesToCreate.length} component food entries for food_entry_meal ${foodEntryMealId}.`
-      );
-    }
-    return updatedFoodEntryMeal;
-  } catch (error) {
-    log(
-      'error',
-      `Error updating food entry meal ${foodEntryMealId} for user ${authenticatedUserId}:`,
-      error
-    );
-    throw error;
-  }
-}
-async function getFoodEntryMealWithComponents(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  foodEntryMealId: any
-) {
-  log(
-    'info',
-    `getFoodEntryMealWithComponents in foodEntryService: foodEntryMealId: ${foodEntryMealId}, authenticatedUserId: ${authenticatedUserId}`
-  );
-  try {
-    const foodEntryMeal = await foodEntryMealRepository.getFoodEntryMealById(
+    // Update parent record
+    await foodEntryMealRepository.updateFoodEntryMeal(
       foodEntryMealId,
-      authenticatedUserId
+      authenticatedUserId,
+      actingUserId,
+      mealData
     );
-    if (!foodEntryMeal) {
-      return null;
-    }
-    const componentFoodEntries =
-      await foodRepository.getFoodEntryComponentsByFoodEntryMealId(
-        foodEntryMealId,
-        authenticatedUserId
-      );
-    // Calculate the multiplier that was used when storing for editing purposes
-    let storedMultiplier = 1.0;
-    if (foodEntryMeal.meal_template_id) {
-      try {
-        const mealTemplate = await mealService.getMealById(
-          authenticatedUserId,
-          foodEntryMeal.meal_template_id
-        );
-        if (mealTemplate) {
-          const consumedQuantity = foodEntryMeal.quantity || 1.0;
-          const templateServingSize = mealTemplate.serving_size || 1.0;
-          if (foodEntryMeal.unit === 'serving') {
-            storedMultiplier = consumedQuantity;
-          } else {
-            storedMultiplier = consumedQuantity / templateServingSize;
-          }
-          log(
-            'info',
-            `Calculated stored multiplier for unscaling: ${storedMultiplier} (consumed: ${consumedQuantity}, template serving: ${templateServingSize})`
-          );
-        }
-      } catch (err) {
-        log(
-          'warn',
-          'Failed to fetch meal template for unscaling, using multiplier 1.0',
-          err
-        );
-      }
-    }
-    // Aggregate nutritional data from componentFoodEntries (for frontend display)
-    let totalCalories = 0;
-    let totalProtein = 0;
-    let totalCarbs = 0;
-    let totalFat = 0;
-    let totalSodium = 0;
-    let totalFiber = 0;
-    let totalSugars = 0;
-    let totalSaturatedFat = 0;
-    let totalPolyunsaturatedFat = 0;
-    let totalMonounsaturatedFat = 0;
-    let totalTransFat = 0;
-    let totalCholesterol = 0;
-    let totalPotassium = 0;
-    let totalVitaminA = 0;
-    let totalVitaminC = 0;
-    let totalCalcium = 0;
-    let totalIron = 0;
-    const totalCustomNutrients = {};
-    let totalCarbsForGI = 0;
-    let weightedGIAccumulator = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    componentFoodEntries.forEach((entry: any) => {
-      const servingSize = entry.serving_size || 1;
-      const ratio = entry.quantity / servingSize;
-      totalCalories += (entry.calories || 0) * ratio;
-      totalProtein += (entry.protein || 0) * ratio;
-      totalCarbs += (entry.carbs || 0) * ratio;
-      totalFat += (entry.fat || 0) * ratio;
-      totalSodium += (entry.sodium || 0) * ratio;
-      totalFiber += (entry.dietary_fiber || 0) * ratio;
-      totalSugars += (entry.sugars || 0) * ratio;
-      totalSaturatedFat += (entry.saturated_fat || 0) * ratio;
-      totalPolyunsaturatedFat += (entry.polyunsaturated_fat || 0) * ratio;
-      totalMonounsaturatedFat += (entry.monounsaturated_fat || 0) * ratio;
-      totalTransFat += (entry.trans_fat || 0) * ratio;
-      totalCholesterol += (entry.cholesterol || 0) * ratio;
-      totalPotassium += (entry.potassium || 0) * ratio;
-      totalVitaminA += (entry.vitamin_a || 0) * ratio;
-      totalVitaminC += (entry.vitamin_c || 0) * ratio;
-      totalCalcium += (entry.calcium || 0) * ratio;
-      totalIron += (entry.iron || 0) * ratio;
-      // Aggregate custom nutrients
-      if (
-        entry.custom_nutrients &&
-        typeof entry.custom_nutrients === 'object'
-      ) {
-        Object.entries(entry.custom_nutrients).forEach(([name, value]) => {
-          if (
-            value === null ||
-            value === undefined ||
-            String(value).trim() === ''
-          ) {
-            return; // Skip empty, null, or whitespace-only values
-          }
-          const numValue = Number(value);
-          if (!isNaN(numValue)) {
-            // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
-            totalCustomNutrients[name] =
-              // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
-              (totalCustomNutrients[name] || 0) + numValue * ratio;
-          }
-        });
-      }
-      if (entry.glycemic_index && entry.carbs) {
-        const giValue = getGlycemicIndexValue(entry.glycemic_index);
-        if (giValue !== null) {
-          weightedGIAccumulator +=
-            giValue * ((entry.carbs * entry.quantity) / servingSize);
-          totalCarbsForGI += (entry.carbs * entry.quantity) / servingSize;
-        }
-      }
-    });
-    const aggregatedGlycemicIndex =
-      totalCarbsForGI > 0 ? weightedGIAccumulator / totalCarbsForGI : null;
-    return {
-      ...foodEntryMeal,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      foods: componentFoodEntries.map((entry: any) => {
-        const quantityToReturn = foodEntryMeal.meal_template_id
-          ? entry.quantity / storedMultiplier
-          : entry.quantity;
-        return {
-          food_id: entry.food_id,
-          food_name: entry.food_name,
-          variant_id: entry.variant_id,
-          quantity: quantityToReturn,
-          unit: entry.unit,
-          calories: entry.calories, // BASE value per serving_size
-          protein: entry.protein,
-          carbs: entry.carbs,
-          fat: entry.fat,
-          saturated_fat: entry.saturated_fat,
-          polyunsaturated_fat: entry.polyunsaturated_fat,
-          monounsaturated_fat: entry.monounsaturated_fat,
-          trans_fat: entry.trans_fat,
-          cholesterol: entry.cholesterol,
-          sodium: entry.sodium,
-          potassium: entry.potassium,
-          dietary_fiber: entry.dietary_fiber,
-          sugars: entry.sugars,
-          vitamin_a: entry.vitamin_a,
-          vitamin_c: entry.vitamin_c,
-          calcium: entry.calcium,
-          iron: entry.iron,
-          glycemic_index: entry.glycemic_index,
-          custom_nutrients: entry.custom_nutrients,
-          serving_size: entry.serving_size,
-          serving_unit: entry.serving_unit,
-        };
-      }),
-      // Aggregated totals are still calculated (for display when not editing)
-      calories: totalCalories,
-      protein: totalProtein,
-      carbs: totalCarbs,
-      fat: totalFat,
-      saturated_fat: totalSaturatedFat,
-      polyunsaturated_fat: totalPolyunsaturatedFat,
-      monounsaturated_fat: totalMonounsaturatedFat,
-      trans_fat: totalTransFat,
-      cholesterol: totalCholesterol,
-      sodium: totalSodium,
-      potassium: totalPotassium,
-      dietary_fiber: totalFiber,
-      sugars: totalSugars,
-      vitamin_a: totalVitaminA,
-      vitamin_c: totalVitaminC,
-      calcium: totalCalcium,
-      iron: totalIron,
-      custom_nutrients: totalCustomNutrients,
-      glycemic_index: getGlycemicIndexCategory(aggregatedGlycemicIndex),
-    };
-  } catch (error) {
-    log(
-      'error',
-      `Error getting food entry meal ${foodEntryMealId} with components for user ${authenticatedUserId}:`,
-      error
-    );
-    throw error;
-  }
-}
-async function getFoodEntryMealsByDate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  selectedDate: any
-) {
-  log(
-    'info',
-    `getFoodEntryMealsByDate in foodEntryService: authenticatedUserId: ${authenticatedUserId}, targetUserId: ${targetUserId}, selectedDate: ${selectedDate}`
-  );
-  try {
-    const foodEntryMeals =
-      await foodEntryMealRepository.getFoodEntryMealsByDate(
-        targetUserId,
-        selectedDate
-      );
-    const mealsWithComponents = [];
-    for (const meal of foodEntryMeals) {
-      const componentFoodEntries =
+    // If quantity was updated, we need to rescale all component food entries
+    if (mealData.quantity !== undefined && mealData.quantity !== null) {
+      const components =
         await foodRepository.getFoodEntryComponentsByFoodEntryMealId(
-          meal.id,
+          foodEntryMealId,
           authenticatedUserId
         );
-      let totalCalories = 0;
-      let totalSodium = 0;
-      let totalFiber = 0;
-      let totalSugars = 0;
-      let totalSaturatedFat = 0;
-      let totalPolyunsaturatedFat = 0;
-      let totalMonounsaturatedFat = 0;
-      let totalTransFat = 0;
-      let totalCholesterol = 0;
-      let totalPotassium = 0;
-      let totalVitaminA = 0;
-      let totalVitaminC = 0;
-      let totalCalcium = 0;
-      let totalIron = 0;
-      const totalCustomNutrients = {};
-      let totalProtein = 0;
-      let totalCarbs = 0;
-      let totalFat = 0;
-      let totalCarbsForGI = 0;
-      let weightedGIAccumulator = 0;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      componentFoodEntries.forEach((entry: any) => {
-        const ratio = entry.quantity / (entry.serving_size || 1);
-        totalCalories += (entry.calories || 0) * ratio;
-        totalProtein += (entry.protein || 0) * ratio;
-        totalCarbs += (entry.carbs || 0) * ratio;
-        totalFat += (entry.fat || 0) * ratio;
-        totalSodium += (entry.sodium || 0) * ratio;
-        totalFiber += (entry.dietary_fiber || 0) * ratio;
-        totalSugars += (entry.sugars || 0) * ratio;
-        totalSaturatedFat += (entry.saturated_fat || 0) * ratio;
-        totalPolyunsaturatedFat += (entry.polyunsaturated_fat || 0) * ratio;
-        totalMonounsaturatedFat += (entry.monounsaturated_fat || 0) * ratio;
-        totalTransFat += (entry.trans_fat || 0) * ratio;
-        totalCholesterol += (entry.cholesterol || 0) * ratio;
-        totalPotassium += (entry.potassium || 0) * ratio;
-        totalVitaminA += (entry.vitamin_a || 0) * ratio;
-        totalVitaminC += (entry.vitamin_c || 0) * ratio;
-        totalCalcium += (entry.calcium || 0) * ratio;
-        totalIron += (entry.iron || 0) * ratio;
-        // Aggregate custom nutrients
-        if (
-          entry.custom_nutrients &&
-          typeof entry.custom_nutrients === 'object'
-        ) {
-          Object.entries(entry.custom_nutrients).forEach(([name, value]) => {
-            if (
-              value === null ||
-              value === undefined ||
-              String(value).trim() === ''
-            ) {
-              return; // Skip empty, null, or whitespace-only values
-            }
-            const numValue = Number(value);
-            if (!isNaN(numValue)) {
-              // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
-              totalCustomNutrients[name] =
-                // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
-                (totalCustomNutrients[name] || 0) + numValue * ratio;
-            }
-          });
-        }
-        if (entry.glycemic_index && entry.carbs) {
-          const giValue = getGlycemicIndexValue(entry.glycemic_index);
-          if (giValue !== null) {
-            weightedGIAccumulator +=
-              giValue * ((entry.carbs * entry.quantity) / entry.serving_size);
-            totalCarbsForGI +=
-              (entry.carbs * entry.quantity) / entry.serving_size;
+      if (components.length > 0) {
+        // Calculate new multiplier
+        // If we have a meal_template_id, use template's serving size. Otherwise assumes 1.0.
+        let mealServingSize = 1.0;
+        if (existingMeal.meal_template_id) {
+          const template = await mealService.getMealById(
+            authenticatedUserId,
+            existingMeal.meal_template_id
+          );
+          if (template) {
+            mealServingSize = template.serving_size || 1.0;
           }
         }
-      });
-      const aggregatedGlycemicIndex =
-        totalCarbsForGI > 0 ? weightedGIAccumulator / totalCarbsForGI : null;
-      mealsWithComponents.push({
-        ...meal,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        foods: componentFoodEntries.map((entry: any) => ({
-          food_id: entry.food_id,
-          food_name: entry.food_name,
-          variant_id: entry.variant_id,
-          quantity: entry.quantity,
-          unit: entry.unit,
-          calories: (entry.calories * entry.quantity) / entry.serving_size,
-          protein: (entry.protein * entry.quantity) / entry.serving_size,
-          carbs: (entry.carbs * entry.quantity) / entry.serving_size,
-          fat: (entry.fat * entry.quantity) / entry.serving_size,
-
-          saturated_fat:
-            (entry.saturated_fat * entry.quantity) / entry.serving_size,
-
-          polyunsaturated_fat:
-            (entry.polyunsaturated_fat * entry.quantity) / entry.serving_size,
-
-          monounsaturated_fat:
-            (entry.monounsaturated_fat * entry.quantity) / entry.serving_size,
-
-          trans_fat: (entry.trans_fat * entry.quantity) / entry.serving_size,
-
-          cholesterol:
-            (entry.cholesterol * entry.quantity) / entry.serving_size,
-
-          sodium: (entry.sodium * entry.quantity) / entry.serving_size,
-          potassium: (entry.potassium * entry.quantity) / entry.serving_size,
-
-          dietary_fiber:
-            (entry.dietary_fiber * entry.quantity) / entry.serving_size,
-
-          sugars: (entry.sugars * entry.quantity) / entry.serving_size,
-          vitamin_a: (entry.vitamin_a * entry.quantity) / entry.serving_size,
-          vitamin_c: (entry.vitamin_c * entry.quantity) / entry.serving_size,
-          calcium: (entry.calcium * entry.quantity) / entry.serving_size,
-          iron: (entry.iron * entry.quantity) / entry.serving_size,
-          glycemic_index: entry.glycemic_index,
-          custom_nutrients: entry.custom_nutrients,
-          serving_size: entry.serving_size,
-          serving_unit: entry.serving_unit,
-        })),
-        calories: totalCalories,
-        protein: totalProtein,
-        carbs: totalCarbs,
-        fat: totalFat,
-        saturated_fat: totalSaturatedFat,
-        polyunsaturated_fat: totalPolyunsaturatedFat,
-        monounsaturated_fat: totalMonounsaturatedFat,
-        trans_fat: totalTransFat,
-        cholesterol: totalCholesterol,
-        sodium: totalSodium,
-        potassium: totalPotassium,
-        dietary_fiber: totalFiber,
-        sugars: totalSugars,
-        vitamin_a: totalVitaminA,
-        vitamin_c: totalVitaminC,
-        calcium: totalCalcium,
-        iron: totalIron,
-        custom_nutrients: totalCustomNutrients,
-        glycemic_index: getGlycemicIndexCategory(aggregatedGlycemicIndex),
-      });
+        const newMultiplier = mealData.quantity / mealServingSize;
+        const oldMultiplier = existingMeal.quantity / mealServingSize;
+        const ratio = newMultiplier / oldMultiplier;
+        const scale = (val: any) =>
+          val !== null ? parseFloat((val * ratio).toFixed(4)) : null;
+        for (const component of components) {
+          await foodRepository.updateFoodEntry(
+            component.id,
+            authenticatedUserId,
+            actingUserId,
+            {
+              quantity: scale(component.quantity),
+              entry_date: mealData.entry_date || existingMeal.entry_date,
+              meal_type_id: mealData.meal_type_id || existingMeal.meal_type_id,
+            },
+            {
+              // Rescale snapshot nutrition values
+              food_name: component.food_name,
+              brand_name: component.brand_name,
+              serving_size: component.serving_size,
+              serving_unit: component.serving_unit,
+              calories: scale(component.calories),
+              protein: scale(component.protein),
+              carbs: scale(component.carbs),
+              fat: scale(component.fat),
+              saturated_fat: scale(component.saturated_fat),
+              polyunsaturated_fat: scale(component.polyunsaturated_fat),
+              monounsaturated_fat: scale(component.monounsaturated_fat),
+              trans_fat: scale(component.trans_fat),
+              cholesterol: scale(component.cholesterol),
+              sodium: scale(component.sodium),
+              potassium: scale(component.potassium),
+              dietary_fiber: scale(component.dietary_fiber),
+              sugars: scale(component.sugars),
+              vitamin_a: scale(component.vitamin_a),
+              vitamin_c: scale(component.vitamin_c),
+              calcium: scale(component.calcium),
+              iron: scale(component.iron),
+              glycemic_index: component.glycemic_index,
+              custom_nutrients: component.custom_nutrients,
+            }
+          );
+        }
+      }
+    } else if (
+      mealData.entry_date !== undefined ||
+      mealData.meal_type_id !== undefined
+    ) {
+      // resync headers only (date/slot)
+      const components =
+        await foodRepository.getFoodEntryComponentsByFoodEntryMealId(
+          foodEntryMealId,
+          authenticatedUserId
+        );
+      for (const component of components) {
+        await foodRepository.updateFoodEntry(
+          component.id,
+          authenticatedUserId,
+          actingUserId,
+          {
+            entry_date: mealData.entry_date || component.entry_date,
+            meal_type_id: mealData.meal_type_id || component.meal_type_id,
+          },
+          component // preserve snapshot as-is
+        );
+      }
     }
-    return mealsWithComponents;
-  } catch (error) {
-    log(
-      'error',
-      `Error getting food entry meals by date for user ${authenticatedUserId}:`,
-      error
+    return await foodEntryMealRepository.getFoodEntryMealById(
+      foodEntryMealId,
+      authenticatedUserId
     );
+  } catch (error) {
+    log('error', 'Error in updateFoodEntryMeal:', error);
     throw error;
   }
 }
-
-async function deleteFoodEntryMeal(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  foodEntryMealId: any
-) {
+async function deleteFoodEntryMeal(authenticatedUserId: any, mealId: any) {
   log(
     'info',
-    `deleteFoodEntryMeal in foodEntryService: authenticatedUserId: ${authenticatedUserId}, foodEntryMealId: ${foodEntryMealId}`
+    `deleteFoodEntryMeal in foodEntryService: authenticatedUserId: ${authenticatedUserId}, mealId: ${mealId}`
   );
   try {
-    // foodRepository.deleteFoodEntryComponentsByFoodEntryMealId will be called due to ON DELETE CASCADE
-    // on the food_entries.food_entry_meal_id foreign key.
     const success = await foodEntryMealRepository.deleteFoodEntryMeal(
-      foodEntryMealId,
+      mealId,
       authenticatedUserId
     );
     if (!success) {
       throw new Error('Food entry meal not found or not authorized to delete.');
     }
-    return { message: 'Food entry meal deleted successfully.' };
+    return true;
   } catch (error) {
-    log(
-      'error',
-      `Error deleting food entry meal ${foodEntryMealId} for user ${authenticatedUserId}:`,
-      error
-    );
+    log('error', 'Error in deleteFoodEntryMeal:', error);
     throw error;
   }
 }
-export { createFoodEntry };
-export { deleteFoodEntry };
-export { updateFoodEntry };
-export { getFoodEntriesByDate };
-export { getFoodEntriesByDateRange };
-export { copyFoodEntries };
-export { copyFoodEntriesFromYesterday };
-export { copyAllFoodEntries };
-export { copyAllFoodEntriesFromYesterday };
-export { getDailyNutritionSummary };
-export { createFoodEntryMeal };
-export { updateFoodEntryMeal };
-export { getFoodEntryMealWithComponents };
-export { getFoodEntryMealsByDate };
-export { deleteFoodEntryMeal };
-export default {
+export {
+  getGlycemicIndexValue,
+  getGlycemicIndexCategory,
+  resolveMealTypeId,
   createFoodEntry,
-  deleteFoodEntry,
   updateFoodEntry,
+  deleteFoodEntry,
   getFoodEntriesByDate,
   getFoodEntriesByDateRange,
   copyFoodEntries,
   copyFoodEntriesFromYesterday,
   copyAllFoodEntries,
   copyAllFoodEntriesFromYesterday,
+  getDailyNutritionByCategory,
   getDailyNutritionSummary,
   createFoodEntryMeal,
   updateFoodEntryMeal,
-  getFoodEntryMealWithComponents,
-  getFoodEntryMealsByDate,
+  deleteFoodEntryMeal,
+};
+export default {
+  getGlycemicIndexValue,
+  getGlycemicIndexCategory,
+  resolveMealTypeId,
+  createFoodEntry,
+  updateFoodEntry,
+  deleteFoodEntry,
+  getFoodEntriesByDate,
+  getFoodEntriesByDateRange,
+  copyFoodEntries,
+  copyFoodEntriesFromYesterday,
+  copyAllFoodEntries,
+  copyAllFoodEntriesFromYesterday,
+  getDailyNutritionByCategory,
+  getDailyNutritionSummary,
+  createFoodEntryMeal,
+  updateFoodEntryMeal,
   deleteFoodEntryMeal,
 };

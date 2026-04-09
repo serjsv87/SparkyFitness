@@ -450,6 +450,44 @@ async function updateFoodEntry(
     client.release();
   }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getDailyNutritionByCategory(userId: any, date: any) {
+  const client = await getClient(userId);
+  try {
+    const query = `
+      SELECT 
+        mt.name as category,
+        SUM(fe.calories) as calories,
+        SUM(fe.protein) as protein,
+        SUM(fe.carbs) as carbohydrate,
+        SUM(fe.fat) as fat
+      FROM food_entries fe
+      JOIN meal_types mt ON fe.meal_type_id = mt.id
+      WHERE fe.user_id = $1 AND fe.entry_date = $2
+      GROUP BY mt.name
+    `;
+    const result = await client.query(query, [userId, date]);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const categories: any = {};
+    result.rows.forEach((row: any) => {
+      categories[row.category.toLowerCase()] = {
+        calories: parseFloat(row.calories) || 0,
+        protein: parseFloat(row.protein) || 0,
+        carbohydrate: parseFloat(row.carbohydrate) || 0,
+        fat: parseFloat(row.fat) || 0,
+      };
+    });
+    return categories;
+  } catch (error: any) {
+    log('error', 'Error in getDailyNutritionByCategory:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getFoodEntriesByDate(userId: any, selectedDate: any) {
   const client = await getClient(userId); // User-specific operation
@@ -756,54 +794,52 @@ async function bulkCreateFoodEntries(
     client.release();
   }
 }
+
 async function getFoodEntryComponentsByFoodEntryMealId(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   foodEntryMealId: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   userId: any
 ) {
-  log(
-    'info',
-    `getFoodEntryComponentsByFoodEntryMealId in foodEntry.js: foodEntryMealId: ${foodEntryMealId}, userId: ${userId}`
-  );
-  const client = await getClient(userId);
+  const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
       `SELECT
-        fe.id, 
-        fe.food_id, 
-        mt.name as meal_type, fe.meal_type_id,
-        fe.quantity, 
-        fe.unit, 
-        fe.variant_id, 
-        fe.entry_date,
-        fe.food_entry_meal_id, 
-        fe.food_name, 
-        fe.brand_name, 
-        fe.serving_size, 
-        fe.serving_unit, 
-        fe.calories, 
-        fe.protein, 
-        fe.carbs, 
-        fe.fat,
-        fe.saturated_fat, 
-        fe.polyunsaturated_fat, 
-        fe.monounsaturated_fat, 
-        fe.trans_fat, 
-        fe.cholesterol, 
-        fe.sodium,
-        fe.potassium, 
-        fe.dietary_fiber, 
-        fe.sugars, 
-        fe.vitamin_a, 
-        fe.vitamin_c, 
-        fe.calcium, 
-        fe.iron, 
-        fe.glycemic_index, 
-        fe.custom_nutrients
-       FROM food_entries fe
-       LEFT JOIN meal_types mt ON fe.meal_type_id = mt.id
-       WHERE fe.food_entry_meal_id = $1`,
+        id, 
+        food_id, 
+        meal_id, 
+        meal_type_id, 
+        quantity, 
+        unit, 
+        variant_id, 
+        entry_date, 
+        meal_plan_template_id,
+        food_entry_meal_id, 
+        food_name, 
+        brand_name, 
+        serving_size, 
+        serving_unit, 
+        calories, 
+        protein, 
+        carbs, 
+        fat,
+        saturated_fat, 
+        polyunsaturated_fat, 
+        monounsaturated_fat, 
+        trans_fat, 
+        cholesterol, 
+        sodium,
+        potassium, 
+        dietary_fiber, 
+        sugars, 
+        vitamin_a, 
+        vitamin_c, 
+        calcium, 
+        iron, 
+        glycemic_index, 
+        custom_nutrients
+       FROM food_entries
+       WHERE food_entry_meal_id = $1`,
       [foodEntryMealId]
     );
     return result.rows;
@@ -811,50 +847,33 @@ async function getFoodEntryComponentsByFoodEntryMealId(
     client.release();
   }
 }
-async function deleteFoodEntryComponentsByFoodEntryMealId(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  foodEntryMealId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any
-) {
-  log(
-    'info',
-    `deleteFoodEntryComponentsByFoodEntryMealId in foodEntry.js: foodEntryMealId: ${foodEntryMealId}, userId: ${userId}`
-  );
-  const client = await getClient(userId);
-  try {
-    const result = await client.query(
-      'DELETE FROM food_entries WHERE food_entry_meal_id = $1 RETURNING id',
-      [foodEntryMealId]
-    );
-    return result.rowCount > 0;
-  } finally {
-    client.release();
-  }
-}
-export { createFoodEntry };
-export { getFoodEntryOwnerId };
-export { updateFoodEntry };
-export { deleteFoodEntry };
-export { getFoodEntriesByDate };
-export { getFoodEntriesByDateAndMealType };
-export { getFoodEntriesByDateRange };
-export { getFoodEntryByDetails };
-export { bulkCreateFoodEntries };
-export { getFoodEntryById };
-export { getFoodEntryComponentsByFoodEntryMealId };
-export { deleteFoodEntryComponentsByFoodEntryMealId };
-export default {
+
+export {
   createFoodEntry,
+  getFoodEntryById,
   getFoodEntryOwnerId,
-  updateFoodEntry,
   deleteFoodEntry,
+  updateFoodEntry,
+  getDailyNutritionByCategory,
   getFoodEntriesByDate,
   getFoodEntriesByDateAndMealType,
   getFoodEntriesByDateRange,
   getFoodEntryByDetails,
   bulkCreateFoodEntries,
-  getFoodEntryById,
   getFoodEntryComponentsByFoodEntryMealId,
-  deleteFoodEntryComponentsByFoodEntryMealId,
+};
+
+export default {
+  createFoodEntry,
+  getFoodEntryById,
+  getFoodEntryOwnerId,
+  deleteFoodEntry,
+  updateFoodEntry,
+  getDailyNutritionByCategory,
+  getFoodEntriesByDate,
+  getFoodEntriesByDateAndMealType,
+  getFoodEntriesByDateRange,
+  getFoodEntryByDetails,
+  bulkCreateFoodEntries,
+  getFoodEntryComponentsByFoodEntryMealId,
 };
