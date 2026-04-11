@@ -174,7 +174,25 @@ export async function executeWater(
       drinks,
       null
     );
-    return `✅ Вода: ${Math.round(totalMl)} мл (${dateToUse})`;
+
+    // Fetch updated total and goal for informative response
+    const sparkyWaterEntries = await measurementRepository.getWaterIntakeByDate(
+      userId,
+      dateToUse
+    );
+    const updatedTotalML = Math.round(
+      Array.isArray(sparkyWaterEntries)
+        ? sparkyWaterEntries.reduce((sum, e) => sum + Number(e.water_ml), 0)
+        : sparkyWaterEntries
+          ? Number(sparkyWaterEntries.water_ml)
+          : 0
+    );
+
+    const goalService = require('../../services/goalService');
+    const goals = await goalService.getUserGoals(userId, dateToUse);
+    const goalML = goals ? Math.round(goals.water_goal_ml) : 2000;
+
+    return `✅ <b>Вода записана: +${Math.round(totalMl)} мл</b>\n💧 <b>Всього за сьогодні: ${updatedTotalML} / ${goalML} мл</b>\n📅 [${dateToUse}]`;
   } catch (e: any) {
     log('error', `[INTENT] Water error: ${e.message}`);
     return `❌ Помилка запису води: ${e.message}`;

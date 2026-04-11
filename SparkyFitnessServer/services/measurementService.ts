@@ -1246,6 +1246,47 @@ async function upsertWaterIntake(
         );
       });
 
+    // 1. Atomic push to Garmin hydration (immediate response, prevents race conditions)
+    const garminConnectService = require('../integrations/garminconnect/garminConnectService');
+    const garminService = require('./garminService');
+    const deltaMl = Math.round(changeDrinks * amountPerDrink);
+
+    log(
+      'info',
+      `[WATER_SYNC] Proactive atomic push to Garmin for user ${authenticatedUserId}: ${deltaMl} mL on ${entryDate}`
+    );
+    garminConnectService
+      .logGarminHydration(authenticatedUserId, entryDate, deltaMl)
+      .catch((err) => {
+        log(
+          'error',
+          `[WATER_SYNC] Atomic Garmin hydration push failed: ${err.message}`
+        );
+      });
+
+    // 2. Debounced "Repair Sync" (ensures Sparky and Garmin totals eventually match)
+    // We wait 3 seconds after the last action before performing a final alignment check.
+    if (!global.hydrationSyncTimers) global.hydrationSyncTimers = {};
+    const timerKey = `${authenticatedUserId}-${entryDate}`;
+    if (global.hydrationSyncTimers[timerKey]) {
+      clearTimeout(global.hydrationSyncTimers[timerKey]);
+    }
+    global.hydrationSyncTimers[timerKey] = setTimeout(() => {
+      delete global.hydrationSyncTimers[timerKey];
+      log(
+        'info',
+        `[WATER_SYNC] Running debounced Repair Sync to align totals for user ${authenticatedUserId} on ${entryDate}`
+      );
+      garminService
+        .syncGarminHydration(authenticatedUserId, entryDate, true)
+        .catch((err) => {
+          log(
+            'error',
+            `[WATER_SYNC] Debounced Repair Sync failed: ${err.message}`
+          );
+        });
+    }, 3000);
+
     return result;
   } catch (error) {
     log(
@@ -1910,6 +1951,39 @@ async function getBulkMeasurementHistory(
   }
 }
 
+async function upsertCustomMeasurementEntry(
+  userId: string,
+  actingUserId: string,
+  entryData: {
+    category_id: string;
+    value: any;
+    entry_date: string;
+    entry_hour?: number;
+    entry_timestamp?: string;
+    notes?: string;
+    source?: string;
+    frequency?: string;
+  }
+) {
+  const category = await getCustomCategoryById(entryData.category_id, userId);
+  if (!category) {
+    throw new Error(`Category ${entryData.category_id} not found.`);
+  }
+
+  return await measurementRepository.upsertCustomMeasurement(
+    userId,
+    actingUserId,
+    entryData.category_id,
+    entryData.value,
+    entryData.entry_date,
+    entryData.entry_hour ?? 0,
+    entryData.entry_timestamp ?? new Date(entryData.entry_date).toISOString(),
+    entryData.notes ?? null,
+    entryData.frequency ?? category.frequency ?? 'Daily',
+    entryData.source ?? 'manual'
+  );
+}
+
 export {
   resolveHealthEntryDate,
   processHealthData,
@@ -1929,6 +2003,7 @@ export {
   getCustomMeasurementsByDate,
   createCustomMeasurement,
   updateCustomMeasurement,
+  upsertCustomMeasurementEntry,
   deleteCustomMeasurement,
   processSleepEntry,
   getSleepEntryByDate,
@@ -1961,6 +2036,7 @@ export default {
   getCustomMeasurementsByDate,
   createCustomMeasurement,
   updateCustomMeasurement,
+  upsertCustomMeasurementEntry,
   deleteCustomMeasurement,
   processSleepEntry,
   getSleepEntryByDate,

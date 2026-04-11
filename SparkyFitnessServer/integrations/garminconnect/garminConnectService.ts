@@ -272,15 +272,108 @@ async function fetchGarminActivitiesAndWorkouts(
     );
   }
 }
+
+async function getGarminHydrationData(userId: string, date: string) {
+  try {
+    const provider =
+      await externalProviderRepository.getExternalDataProviderByUserIdAndProviderName(
+        userId,
+        'garmin'
+      );
+    if (!provider || !provider.garth_dump) {
+      throw new Error('Garmin tokens not found for this user.');
+    }
+    const decryptedTokens = provider.garth_dump;
+
+    const response = await axios.get(
+      `${GARMIN_MICROSERVICE_URL}/data/hydration`,
+      {
+        params: {
+          user_id: userId,
+          tokens: decryptedTokens,
+          date: date,
+        },
+      }
+    );
+    return response.data;
+  } catch (error: unknown) {
+    const isAxiosError = axios.isAxiosError(error);
+    const errorData = isAxiosError ? error.response?.data : null;
+    const detail =
+      errorData?.detail ||
+      (error instanceof Error ? error.message : String(error));
+
+    log(
+      'error',
+      `Error fetching Garmin hydration data for user ${userId} on ${date}:`,
+      errorData || detail
+    );
+    throw new Error(`Failed to fetch Garmin hydration data: ${detail}`, {
+      cause: error,
+    });
+  }
+}
+
+async function logGarminHydration(
+  userId: string,
+  date: string,
+  valueMl: number,
+  options?: { userProfileId?: number; timestampLocal?: string }
+) {
+  try {
+    const provider =
+      await externalProviderRepository.getExternalDataProviderByUserIdAndProviderName(
+        userId,
+        'garmin'
+      );
+    if (!provider || !provider.garth_dump) {
+      throw new Error('Garmin tokens not found for this user.');
+    }
+    const decryptedTokens = provider.garth_dump;
+
+    const response = await axios.post(
+      `${GARMIN_MICROSERVICE_URL}/data/hydration/log`,
+      {
+        user_id: userId,
+        tokens: decryptedTokens,
+        date: date,
+        value_in_ml: valueMl,
+        user_profile_id: options?.userProfileId,
+        timestamp_local: options?.timestampLocal,
+      }
+    );
+    return response.data;
+  } catch (error: unknown) {
+    const isAxiosError = axios.isAxiosError(error);
+    const errorData = isAxiosError ? error.response?.data : null;
+    const detail =
+      errorData?.detail ||
+      (error instanceof Error ? error.message : String(error));
+
+    log(
+      'error',
+      `Error logging Garmin hydration data for user ${userId} on ${date}:`,
+      errorData || detail
+    );
+    throw new Error(`Failed to log Garmin hydration data: ${detail}`, {
+      cause: error,
+    });
+  }
+}
+
 export { garminLogin };
 export { garminResumeLogin };
 export { handleGarminTokens };
 export { syncGarminHealthAndWellness };
 export { fetchGarminActivitiesAndWorkouts };
+export { getGarminHydrationData };
+export { logGarminHydration };
 export default {
   garminLogin,
   garminResumeLogin,
   handleGarminTokens,
   syncGarminHealthAndWellness,
   fetchGarminActivitiesAndWorkouts,
+  getGarminHydrationData,
+  logGarminHydration,
 };

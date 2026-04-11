@@ -1,4 +1,5 @@
 import { log } from '../config/logging.js';
+import poolManager from '../db/poolManager.js';
 import exerciseEntryRepository from '../models/exerciseEntry.js';
 import exerciseRepository from '../models/exercise.js';
 import activityDetailsRepository from '../models/activityDetailsRepository.js';
@@ -12,6 +13,10 @@ import moment from 'moment';
 import { loadUserTimezone } from '../utils/timezoneLoader.js';
 import { todayInZone, addDays } from '@workspace/shared';
 import sleepRepository from '../models/sleepRepository.js';
+import goalService from './goalService.js';
+import goalRepository from '../models/goalRepository.js';
+import measurementRepository from '../models/measurementRepository.js';
+
 async function processActivitiesAndWorkouts(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   userId: any,
@@ -129,7 +134,7 @@ async function processGarminHealthAndWellnessData(
               status: 'success',
               date,
             });
-          } catch (error) {
+          } catch (error: any) {
             log(
               'error',
               `Error storing raw stress data for user ${userId} on ${date}:`,
@@ -139,7 +144,6 @@ async function processGarminHealthAndWellnessData(
               type: 'raw_stress_data',
               status: 'error',
               date,
-              // @ts-expect-error TS(2571): Object is of type 'unknown'.
               message: error.message,
             });
           }
@@ -158,7 +162,7 @@ async function processGarminHealthAndWellnessData(
               status: 'success',
               date,
             });
-          } catch (error) {
+          } catch (error: any) {
             log(
               'error',
               `Error storing derived mood value for user ${userId} on ${date}:`,
@@ -168,7 +172,6 @@ async function processGarminHealthAndWellnessData(
               type: 'derived_mood_value',
               status: 'error',
               date,
-              // @ts-expect-error TS(2571): Object is of type 'unknown'.
               message: error.message,
             });
           }
@@ -182,13 +185,12 @@ async function processGarminHealthAndWellnessData(
     //     // Process heart rate data
     //   }
     // }
-  } catch (error) {
+  } catch (error: any) {
     log(
       'error',
       `[garminService] Unexpected error in processGarminHealthAndWellnessData for user ${userId}:`,
       error
     );
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
     errors.push({ type: 'general', status: 'error', message: error.message });
   }
   if (errors.length > 0) {
@@ -309,8 +311,7 @@ async function processGarminWorkoutSession(
         garminExerciseName = 'Unknown Exercise';
       }
       if (garminExerciseName) {
-        // @ts-expect-error TS(7022): 'exerciseName' implicitly has type 'any' because i... Remove this comment to see the full error message
-        const exerciseName = garminExerciseName
+        const exerciseName: string = (garminExerciseName as string)
           .replace(/_/g, ' ')
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .replace(/\b\w/g, (l: any) => l.toUpperCase());
@@ -329,8 +330,8 @@ async function processGarminWorkoutSession(
             sets: [],
             totalDuration: 0,
             activeDuration: 0,
-            startTime: null, // To store the start time of the first active set for this exercise
-            endTime: null, // To store the end time of the last active set for this exercise
+            startTime: null as number | null, // To store the start time of the first active set for this exercise
+            endTime: null as number | null, // To store the end time of the last active set for this exercise
           };
           groupedExercises.push(currentGroup);
         }
@@ -370,11 +371,9 @@ async function processGarminWorkoutSession(
               !currentGroup.startTime ||
               setStartTime < currentGroup.startTime
             ) {
-              // @ts-expect-error TS(2322): Type 'number' is not assignable to type 'null'.
               currentGroup.startTime = setStartTime;
             }
             if (!currentGroup.endTime || setEndTime > currentGroup.endTime) {
-              // @ts-expect-error TS(2322): Type 'number' is not assignable to type 'null'.
               currentGroup.endTime = setEndTime;
             }
             // Store active set details for later rest time calculation
@@ -723,7 +722,7 @@ async function processGarminSleepData(
         sleepEntry
       );
       processedResults.push({ status: 'success', data: result });
-    } catch (error) {
+    } catch (error: any) {
       log(
         'error',
         `Error processing Garmin sleep entry for user ${userId}:`,
@@ -731,7 +730,6 @@ async function processGarminSleepData(
       );
       errors.push({
         status: 'error',
-        // @ts-expect-error TS(2571): Object is of type 'unknown'.
         message: error.message,
         entry: sleepEntry,
       });
@@ -752,6 +750,128 @@ async function processGarminSleepData(
     };
   }
 }
+
+async function syncGarminHydration(userId: any, date: any, isManualTrigger = false) {
+  log(
+    'info',
+    `[WATER_SYNC] Syncing hydration for user ${userId} on ${date} (Manual trigger: ${isManualTrigger})`
+  );
+
+  try {
+    // 1. Get current hydration state from Garmin
+    const garminState = await garminConnectService.getGarminHydrationData(
+      userId,
+      date
+    );
+    if (!garminState) {
+      log(
+        'warn',
+        `[WATER_SYNC] No hydration data returned from Garmin for ${date}`
+      );
+      return;
+    }
+
+    const {
+      goalInML,
+      valueInML: garminValueInML,
+      userProfileId,
+      sweatLossInML,
+    } = garminState;
+
+    // 2. Update SparkyFitness goal if it has changed from Garmin's goal
+    const currentGoals = await goalService.getUserGoals(userId, date);
+    if (
+      currentGoals &&
+      goalInML &&
+      Math.abs(currentGoals.water_goal_ml - goalInML) > 1
+    ) {
+      log(
+        'info',
+        `[WATER_SYNC] Updating hydration goal for user ${userId} on ${date}: ${currentGoals.water_goal_ml} -> ${goalInML} mL (Sweat loss: ${sweatLossInML} mL)`
+      );
+
+      // We use currentGoals as a template but only update specific fields
+      const goalPayload = {
+        ...currentGoals,
+        user_id: userId,
+        goal_date: date,
+        water_goal_ml: goalInML,
+      };
+
+      // Remove unwanted metadata fields
+      delete goalPayload.id;
+      delete (goalPayload as any).created_at;
+      delete (goalPayload as any).updated_at;
+
+      await goalRepository.upsertGoal(goalPayload);
+    }
+
+    // 3. Sync water intake
+    // We treat 'manual' and 'mfp' sources as the User's Intent.
+    // We treat 'garmin' source in Sparky as the Mirror of what's already on the watch.
+    const client = await poolManager.getClient(userId);
+    let sparkyIntentML = 0;
+    try {
+      const result = await client.query(
+        "SELECT SUM(water_ml) as total FROM water_intake WHERE user_id = $1 AND entry_date = $2 AND source IN ('manual', 'mfp')",
+        [userId, date]
+      );
+      sparkyIntentML = Math.round(Number(result.rows[0]?.total || 0));
+    } finally {
+      client.release();
+    }
+
+    if (sparkyIntentML === 0 && garminValueInML > 0 && !isManualTrigger) {
+      // CASE A: Background sync and no manual logs in Sparky.
+      // ACTION: Import from Garmin watch to Sparky (assume user logged on watch first).
+      log(
+        'info',
+        `[WATER_SYNC] Background Import: ${garminValueInML} mL from watch to Sparky for user ${userId} on ${date}`
+      );
+      await measurementRepository.upsertWaterData(
+        userId,
+        userId,
+        garminValueInML,
+        date,
+        'garmin'
+      );
+    } else {
+      // CASE B: Manual trigger or Sparky has logs.
+      // ACTION: Sparky is Master. Make Garmin match Sparky's INTENTIONAL total (even if 0).
+      const diffML = Math.round(sparkyIntentML - garminValueInML);
+
+      if (Math.abs(diffML) > 10) {
+        log(
+          'info',
+          `[WATER_SYNC] Exporting to Garmin: ${diffML} mL diff for user ${userId} on ${date} (Intent: ${sparkyIntentML} mL, Watch: ${garminValueInML} mL)`
+        );
+        await garminConnectService.logGarminHydration(userId, date, diffML, {
+          userProfileId,
+        });
+      }
+
+      // CRITICAL: Once Sparky Intent is established, we must ensure there's no duplicate
+      // 'garmin' bucket entry that would inflate the total when summed.
+      // We essentially "absorb" the Garmin data into our manual intent.
+      const clientCleanup = await poolManager.getClient(userId);
+      try {
+        await clientCleanup.query(
+          "DELETE FROM water_intake WHERE user_id = $1 AND entry_date = $2 AND source = 'garmin'",
+          [userId, date]
+        );
+      } finally {
+        clientCleanup.release();
+      }
+    }
+  } catch (err: any) {
+    log(
+      'error',
+      `[WATER_SYNC] Error in syncGarminHydration for user ${userId}:`,
+      err.message
+    );
+  }
+}
+
 async function syncGarminData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   userId: any,
@@ -774,11 +894,23 @@ async function syncGarminData(
   } else {
     throw new Error("Invalid syncType. Must be 'manual' or 'scheduled'.");
   }
+
+  // Hydration sync (only for the end date / today)
+  try {
+    await syncGarminHydration(userId, endDate);
+  } catch (err) {
+    log(
+      'error',
+      `[garminService] Failed to sync Garmin hydration for user ${userId} on ${endDate}:`,
+      err
+    );
+  }
+
   log(
     'info',
     `[garminService] Starting Garmin sync (${syncType}) for user ${userId} from ${startDate} to ${endDate}.`
   );
-  const results = {
+  const results: any = {
     health: null,
     activities: null,
   };
@@ -862,19 +994,17 @@ async function syncGarminData(
         endDate
       );
     }
-    // @ts-expect-error TS(2322): Type '{ processedGarminHealthData: { message: stri... Remove this comment to see the full error message
     results.health = {
       processedGarminHealthData,
       measurementServiceResult,
       processedSleepData,
     };
-  } catch (healthError) {
+  } catch (healthError: any) {
     log(
       'error',
       `[garminService] Error during health sync for user ${userId}:`,
       healthError
     );
-    // @ts-expect-error TS(2322): Type '{ error: string; }' is not assignable to typ... Remove this comment to see the full error message
     results.health = {
       error:
         healthError instanceof Error
@@ -900,15 +1030,13 @@ async function syncGarminData(
       endDate,
       tz
     );
-    // @ts-expect-error TS(2322): Type '{ processedEntries: number; }' is not assign... Remove this comment to see the full error message
     results.activities = processedActivities;
-  } catch (activitiesError) {
+  } catch (activitiesError: any) {
     log(
       'error',
       `[garminService] Error during activities sync for user ${userId}:`,
       activitiesError
     );
-    // @ts-expect-error TS(2322): Type '{ error: string; }' is not assignable to typ... Remove this comment to see the full error message
     results.activities = {
       error:
         activitiesError instanceof Error
@@ -919,13 +1047,18 @@ async function syncGarminData(
   log('info', `[garminService] Full Garmin sync completed for user ${userId}.`);
   return results;
 }
-export { processActivitiesAndWorkouts };
-export { processGarminWorkoutSession };
-export { processGarminWorkoutDefinition };
-export { processGarminSimpleActivity };
-export { processGarminSleepData };
-export { processGarminHealthAndWellnessData };
-export { syncGarminData };
+
+export {
+  processActivitiesAndWorkouts,
+  processGarminWorkoutSession,
+  processGarminWorkoutDefinition,
+  processGarminSimpleActivity,
+  processGarminSleepData,
+  processGarminHealthAndWellnessData,
+  syncGarminData,
+  syncGarminHydration,
+};
+
 export default {
   processActivitiesAndWorkouts,
   processGarminWorkoutSession,
@@ -934,4 +1067,5 @@ export default {
   processGarminSleepData,
   processGarminHealthAndWellnessData,
   syncGarminData,
+  syncGarminHydration,
 };

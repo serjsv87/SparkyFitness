@@ -21,3 +21,12 @@ class ActivitiesAndWorkoutsRequest(BaseModel):
     start_date: str
     end_date: str
     activity_type: str | None = None
+
+
+class HydrationLogRequest(BaseModel):
+    user_id: str
+    tokens: str
+    date: str
+    value_in_ml: int
+    user_profile_id: int | None = None
+    timestamp_local: str | None = None

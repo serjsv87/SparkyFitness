@@ -18,6 +18,7 @@ from schemas import (
     GarminLoginRequest,
     HealthAndWellnessRequest,
     ActivitiesAndWorkoutsRequest,
+    HydrationLogRequest,
 )
 from service import (
     ALL_HEALTH_METRICS,
@@ -1609,3 +1610,61 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
         raise HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {e}"
         )
+
+
+@router.get("/data/hydration")
+async def get_hydration(user_id: str, tokens: str, date: str):
+    """
+    Retrieves hydration data from Garmin Connect for a specific date.
+    """
+    try:
+        garmin = Garmin(is_cn=IS_CN)
+        garmin.client.loads(tokens)
+        hydration_data = garmin.get_hydration_data(date)
+        logger.info(f"Successfully retrieved hydration data for user {user_id} on {date}.")
+        return hydration_data
+    except Exception as e:
+        logger.error(f"Error retrieving hydration data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/data/hydration/log")
+async def log_hydration_data(request_data: HydrationLogRequest):
+    """
+    Logs hydration to Garmin Connect.
+    """
+    try:
+        garmin = Garmin(is_cn=IS_CN)
+        garmin.client.loads(request_data.tokens)
+
+        # Use provided profile ID or fetch it
+        user_profile_id = request_data.user_profile_id
+        if not user_profile_id:
+            # Quick profile fetch if ID is missing
+            profile = garmin.garth.get(
+                "connectapi", "userprofile-service/userprofile/user-settings"
+            )
+            user_profile_id = profile.json().get("userData", {}).get("userProfileId")
+
+        # Prepare payload
+        # Ensure timestampLocal matches calendarDate by defaulting to end-of-day for the target date
+        ts_local = request_data.timestamp_local
+        if not ts_local:
+            ts_local = f"{request_data.date}T23:59:59.000"
+
+        payload = {
+            "userProfileId": user_profile_id,
+            "calendarDate": request_data.date,
+            "valueInML": request_data.value_in_ml,
+            "timestampLocal": ts_local,
+        }
+
+        url = "usersummary-service/usersummary/hydration/log"
+        response = garmin.garth.put("connectapi", url, json=payload)
+        logger.info(
+            f"Successfully logged hydration for user {request_data.user_id} on {request_data.date}."
+        )
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error logging hydration data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

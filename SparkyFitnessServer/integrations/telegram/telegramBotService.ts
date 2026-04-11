@@ -238,7 +238,7 @@ class TelegramBotService {
           user.id,
           today
         );
-        this.bot!.sendMessage(chatId, intentResult);
+        this.bot!.sendMessage(chatId, intentResult, { parse_mode: 'HTML' });
         return;
       }
 
@@ -320,7 +320,7 @@ class TelegramBotService {
             }
 
             await this.bot!.editMessageText(
-              `✅ Синхронізація з Garmin завершена за ${successCount} днів!\n📊 Активності та показники оновлені.`,
+              `✅ Синхронізація з Garmin завершена за ${successCount} днів!\n📊 Активності, показники та вода оновлені.`,
               {
                 chat_id: chatId,
                 message_id: statusMsg.message_id,
@@ -755,8 +755,12 @@ class TelegramBotService {
         today
       );
 
-      if (result && result.message) {
-        await this.bot!.sendMessage(chatId, result.message);
+      if (typeof result === 'string') {
+        await this.bot!.sendMessage(chatId, result, { parse_mode: 'HTML' });
+      } else if (result && result.message) {
+        await this.bot!.sendMessage(chatId, result.message, {
+          parse_mode: 'HTML',
+        });
       } else if (result && result.intent === 'confirm_deletion') {
         const t = getTranslations(user.language);
         const matches = result.matches || [];
