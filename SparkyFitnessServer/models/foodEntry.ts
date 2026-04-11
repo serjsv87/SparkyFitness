@@ -458,10 +458,13 @@ async function getDailyNutritionByCategory(userId: any, date: any) {
     const query = `
       SELECT 
         mt.name as category,
-        SUM(fe.calories) as calories,
-        SUM(fe.protein) as protein,
-        SUM(fe.carbs) as carbohydrate,
-        SUM(fe.fat) as fat
+        SUM(fe.calories * (fe.quantity / COALESCE(NULLIF(fe.serving_size, 0), 1))) as calories,
+        SUM(fe.protein * (fe.quantity / COALESCE(NULLIF(fe.serving_size, 0), 1))) as protein,
+        SUM(fe.carbs * (fe.quantity / COALESCE(NULLIF(fe.serving_size, 0), 1))) as carbohydrate,
+        SUM(fe.fat * (fe.quantity / COALESCE(NULLIF(fe.serving_size, 0), 1))) as fat,
+        SUM(fe.sugars * (fe.quantity / COALESCE(NULLIF(fe.serving_size, 0), 1))) as sugars,
+        SUM(fe.sodium * (fe.quantity / COALESCE(NULLIF(fe.serving_size, 0), 1))) as sodium,
+        SUM(fe.dietary_fiber * (fe.quantity / COALESCE(NULLIF(fe.serving_size, 0), 1))) as fiber
       FROM food_entries fe
       JOIN meal_types mt ON fe.meal_type_id = mt.id
       WHERE fe.user_id = $1 AND fe.entry_date = $2
@@ -477,6 +480,9 @@ async function getDailyNutritionByCategory(userId: any, date: any) {
         protein: parseFloat(row.protein) || 0,
         carbohydrate: parseFloat(row.carbohydrate) || 0,
         fat: parseFloat(row.fat) || 0,
+        sugars: parseFloat(row.sugars) || 0,
+        sodium: parseFloat(row.sodium) || 0,
+        fiber: parseFloat(row.fiber) || 0,
       };
     });
     return categories;

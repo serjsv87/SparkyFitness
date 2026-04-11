@@ -339,25 +339,72 @@ class TelegramBotService {
           return this.bot!.answerCallbackQuery(query.id).catch(() => {});
         } else if (type === 'mfp') {
           const t = getTranslations(user.language);
+          if (this.activeGarminSyncs.has(chatId)) {
+            return this.bot!.sendMessage(
+              chatId,
+              '⚠️ Синхронізація вже триває.'
+            ).catch(() => {});
+          }
+
+          this.activeGarminSyncs.add(chatId); // Reusing the sync lock
+          const statusMsg = await (this.bot!.sendMessage(
+            chatId,
+            `${t.syncMFPInProgress} (за 7 днів)...`,
+            { disable_notification: true }
+          ) as any);
+
           try {
-            // Check if service exists without merging full branch
             const mfpSyncService = require('../../services/mfpSyncService');
             const tz = (user as any).timezone || 'UTC';
             const today = todayInZone(tz);
-            
-            await this.bot!.sendMessage(chatId, t.syncMFPInProgress).catch(() => {});
-            await mfpSyncService.syncDailyNutritionToMFP(user.id, today);
-            await this.bot!.sendMessage(chatId, t.syncMFPSuccess).catch(() => {});
-          } catch (error: any) {
-            if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('mfpSyncService')) {
-              await this.bot!.sendMessage(chatId, t.syncMFPPendingMerge).catch(() => {});
-            } else {
-              log('error', `[TELEGRAM BOT] MFP sync error: ${error.message}`);
-              await this.bot!.sendMessage(
-                chatId,
-                t.syncMFPError.replace('{{error}}', error.message)
+            const totalDays = 7;
+            let successCount = 0;
+
+            for (let i = 0; i < totalDays; i++) {
+              const currentDate = addDays(today, -i);
+              const dayNum = i + 1;
+
+              const filledBlocks = '▓'.repeat(dayNum);
+              const emptyBlocks = '░'.repeat(totalDays - dayNum);
+              const progressBar = `[${filledBlocks}${emptyBlocks}]`;
+
+              await this.bot!.editMessageText(
+                `⏳ Синхронізація MyFitnessPal...\n${progressBar} ${dayNum}/${totalDays}\n📅 Дата: ${currentDate}`,
+                {
+                  chat_id: chatId,
+                  message_id: statusMsg.message_id,
+                }
               ).catch(() => {});
+
+              // The function is named syncDailyNutritionToMFP in mfpSyncService.ts
+              // We call it for each day. It handles both food and water.
+              await mfpSyncService.syncDailyNutritionToMFP(
+                user.id,
+                currentDate
+              );
+              successCount++;
+
+              await new Promise((resolve) => setTimeout(resolve, 300));
             }
+
+            await this.bot!.editMessageText(
+              `✅ ${t.syncMFPSuccess} за ${successCount} днів!`,
+              {
+                chat_id: chatId,
+                message_id: statusMsg.message_id,
+              }
+            ).catch(() => {});
+          } catch (error: any) {
+            log('error', `[TELEGRAM BOT] MFP sync error: ${error.message}`);
+            await this.bot!.editMessageText(
+              `❌ ${t.syncMFPError.replace('{{error}}', error.message)}`,
+              {
+                chat_id: chatId,
+                message_id: statusMsg.message_id,
+              }
+            ).catch(() => {});
+          } finally {
+            this.activeGarminSyncs.delete(chatId);
           }
           return this.bot!.answerCallbackQuery(query.id).catch(() => {});
         }
@@ -370,9 +417,10 @@ class TelegramBotService {
             text: t.deletedSuccess,
           }).catch(() => {});
           // Optional: update the message to remove the deleted item or just delete the message
-          await this.bot!.deleteMessage(chatId, query.message!.message_id).catch(
-            () => false
-          );
+          await this.bot!.deleteMessage(
+            chatId,
+            query.message!.message_id
+          ).catch(() => false);
           await this.handleDirectTodayLog(chatId, user);
         } catch (e: any) {
           log('error', `[TELEGRAM BOT] Delete food error: ${e.message}`);
@@ -387,7 +435,14 @@ class TelegramBotService {
         try {
           // Check if it's a check-in measurement or custom
           const measurementService = require('../../services/measurementService');
-          if (mType === 'weight' || mType === 'neck' || mType === 'waist' || mType === 'hips' || mType === 'steps' || mType === 'height') {
+          if (
+            mType === 'weight' ||
+            mType === 'neck' ||
+            mType === 'waist' ||
+            mType === 'hips' ||
+            mType === 'steps' ||
+            mType === 'height'
+          ) {
             await measurementService.deleteCheckInMeasurements(user.id, id);
           } else {
             await measurementService.deleteCustomMeasurementEntry(user.id, id);
@@ -395,9 +450,10 @@ class TelegramBotService {
           await this.bot!.answerCallbackQuery(query.id, {
             text: t.deletedSuccess,
           }).catch(() => {});
-          await this.bot!.deleteMessage(chatId, query.message!.message_id).catch(
-            () => false
-          );
+          await this.bot!.deleteMessage(
+            chatId,
+            query.message!.message_id
+          ).catch(() => false);
         } catch (e: any) {
           log('error', `[TELEGRAM BOT] Delete measurement error: ${e.message}`);
           await this.bot!.answerCallbackQuery(query.id, {
@@ -729,7 +785,9 @@ class TelegramBotService {
           }
         }
 
-        buttons.push([{ text: t.cancelDeleteBtn, callback_data: 'cancel_del' }]);
+        buttons.push([
+          { text: t.cancelDeleteBtn, callback_data: 'cancel_del' },
+        ]);
 
         await this.bot!.sendMessage(chatId, confirmText, {
           parse_mode: 'HTML',

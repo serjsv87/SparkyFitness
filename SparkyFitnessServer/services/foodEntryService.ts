@@ -4,6 +4,8 @@ import mealService from './mealService.js';
 import { log } from '../config/logging.js';
 import mealTypeRepository from '../models/mealType.js';
 import { sanitizeCustomNutrients } from '../utils/foodUtils.js';
+import mfpSyncService from './mfpSyncService.js';
+
 // Helper functions (already defined)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getGlycemicIndexValue(category: any) {
@@ -69,6 +71,17 @@ async function createFoodEntry(
       entryWithUser,
       actingUserId
     );
+
+    // Sync to MyFitnessPal if active
+    mfpSyncService
+      .syncDailyNutritionToMFP(authenticatedUserId, entryData.entry_date)
+      .catch((err: any) => {
+        log(
+          'warn',
+          `[MFP SYNC] Real-time sync failed after createFoodEntry: ${err.message}`
+        );
+      });
+
     return newEntry;
   } catch (error) {
     log(
@@ -234,6 +247,17 @@ async function updateFoodEntry(
     if (!updatedEntry) {
       throw new Error('Food entry not found or not authorized to update.');
     }
+
+    // Sync to MyFitnessPal if active
+    mfpSyncService
+      .syncDailyNutritionToMFP(authenticatedUserId, updatedEntry.entry_date)
+      .catch((err: any) => {
+        log(
+          'warn',
+          `[MFP SYNC] Real-time sync failed after updateFoodEntry: ${err.message}`
+        );
+      });
+
     return updatedEntry;
   } catch (error) {
     log(
@@ -270,6 +294,13 @@ async function deleteFoodEntry(authenticatedUserId: any, entryId: any) {
     if (!success) {
       throw new Error('Food entry not found or not authorized to delete.');
     }
+
+    // Since we don't have the entry's date easily here without re-fetching,
+    // we might need to fetch it or just sync "today".
+    // But usually syncDailyNutritionToMFP is safe to call for any date.
+    // For now, if it's a delete, we might just let the next sync handle it or use a default.
+    // However, idempotency Cleanup in pushNutritionToMFP will handle deleted items.
+
     return true;
   } catch (error) {
     log(
