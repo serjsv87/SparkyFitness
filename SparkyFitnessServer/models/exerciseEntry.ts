@@ -436,6 +436,7 @@ async function _createExerciseEntryWithClient(
     const isSyncSource = syncSources.includes(entrySource);
     const syncDuplicateCheck = entryData.source_id ? true : false;
     const skipManualDuplicateCheck = isSyncSource;
+    const syncDuplicateCheck = isSyncSource && !!entryData.source_id;
 
     let existingEntryResult;
     // 1. Attempt precise sync deduplication via source_id if available
