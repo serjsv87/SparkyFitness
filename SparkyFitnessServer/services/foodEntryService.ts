@@ -4,7 +4,7 @@ import mealService from './mealService.js';
 import { log } from '../config/logging.js';
 import mealTypeRepository from '../models/mealType.js';
 import { sanitizeCustomNutrients } from '../utils/foodUtils.js';
-import mfpSyncService from './mfpSyncService.js';
+import * as mfpSyncService from './mfpSyncService.js';
 
 // Helper functions (already defined)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -911,9 +911,8 @@ async function updateFoodEntryMeal(
     // Update parent record
     await foodEntryMealRepository.updateFoodEntryMeal(
       foodEntryMealId,
-      authenticatedUserId,
-      actingUserId,
-      mealData
+      mealData,
+      actingUserId
     );
     // If quantity was updated, we need to rescale all component food entries
     if (mealData.quantity !== undefined && mealData.quantity !== null) {

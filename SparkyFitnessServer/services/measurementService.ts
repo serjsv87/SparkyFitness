@@ -16,7 +16,7 @@ import exerciseDb from '../models/exercise.js';
 import exerciseEntryDb from '../models/exerciseEntry.js';
 import waterContainerRepository from '../models/waterContainerRepository.js';
 import activityDetailsRepository from '../models/activityDetailsRepository.js';
-import mfpSyncService from './mfpSyncService.js';
+import * as mfpSyncService from './mfpSyncService.js';
 
 /**
  * Default units for health metric types when not provided by client (e.g. HealthConnect sync).
@@ -657,9 +657,10 @@ async function processHealthData(
                 shared_with_public: false,
                 source: source,
                 category: 'Cardio',
-                calories_per_hour: caloriesBurned && duration
-                  ? (caloriesBurned / duration) * 3600
-                  : 0,
+                calories_per_hour:
+                  caloriesBurned && duration
+                    ? (caloriesBurned / duration) * 3600
+                    : 0,
               });
             }
             const exerciseEntry = await exerciseEntryDb.createExerciseEntry(
@@ -988,9 +989,10 @@ async function processMobileHealthData(
               shared_with_public: false,
               source: source,
               category: 'Cardio', // Default category, can be refined
-              calories_per_hour: caloriesBurned && duration
-                ? (caloriesBurned / duration) * 3600
-                : 0, // Convert to per hour
+              calories_per_hour:
+                caloriesBurned && duration
+                  ? (caloriesBurned / duration) * 3600
+                  : 0, // Convert to per hour
             });
           }
           const exerciseEntry = await exerciseEntryDb.createExerciseEntry(
@@ -1246,9 +1248,9 @@ async function upsertWaterIntake(
         );
       });
 
-    // 1. Atomic push to Garmin hydration (immediate response, prevents race conditions)
-    const garminConnectService = require('../integrations/garminconnect/garminConnectService');
-    const garminService = require('./garminService');
+    /* Water sync to Garmin disabled as per user request. Local count is source of truth.
+    const garminConnectService = await import('../integrations/garminconnect/garminConnectService.js');
+    const garminService = await import('./garminService.js');
     const deltaMl = Math.round(changeDrinks * amountPerDrink);
 
     log(
@@ -1263,6 +1265,7 @@ async function upsertWaterIntake(
           `[WATER_SYNC] Atomic Garmin hydration push failed: ${err.message}`
         );
       });
+    */
 
     // 2. Debounced "Repair Sync" (ensures Sparky and Garmin totals eventually match)
     // We wait 3 seconds after the last action before performing a final alignment check.
@@ -1572,9 +1575,7 @@ async function deleteCustomCategory(authenticatedUserId: any, categoryId: any) {
       authenticatedUserId
     );
     if (!success) {
-      throw new Error(
-        'Custom category not found or not authorized to delete.'
-      );
+      throw new Error('Custom category not found or not authorized to delete.');
     }
     return true;
   } catch (error) {
@@ -1958,7 +1959,7 @@ async function upsertCustomMeasurementEntry(
     category_id: string;
     value: any;
     entry_date: string;
-    entry_hour?: number;
+    entry_hour?: number | null;
     entry_timestamp?: string;
     notes?: string;
     source?: string;
@@ -1982,6 +1983,168 @@ async function upsertCustomMeasurementEntry(
     entryData.frequency ?? category.frequency ?? 'Daily',
     entryData.source ?? 'manual'
   );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function calculateSleepScore(
+  sleepEntryData: any,
+  stageEvents: any,
+  age: any = null,
+  gender: any = null
+) {
+  const { duration_in_seconds, time_asleep_in_seconds } = sleepEntryData;
+
+  if (!duration_in_seconds || duration_in_seconds <= 0) return 0;
+
+  let score = 0;
+  const maxScore = 100;
+
+  // Define optimal ranges based on age and gender
+  let optimalMinDuration = 7 * 3600; // Default 7 hours
+  let optimalMaxDuration = 9 * 3600; // Default 9 hours
+  let optimalDeepMin = 15; // Default 15%
+  let optimalDeepMax = 25; // Default 25%
+  let optimalRemMin = 20; // Default 20%
+  let optimalRemMax = 25; // Default 25%
+
+  // Adjust optimal sleep duration based on age
+  if (age !== null) {
+    if (age >= 65) {
+      // Older adults
+      optimalMinDuration = 7 * 3600;
+      optimalMaxDuration = 8 * 3600;
+    } else if (age >= 18 && age <= 64) {
+      // Adults
+      optimalMinDuration = 7 * 3600;
+      optimalMaxDuration = 9 * 3600;
+    } else if (age >= 14 && age <= 17) {
+      // Teenagers
+      optimalMinDuration = 8 * 3600;
+      optimalMaxDuration = 10 * 3600;
+    }
+  }
+
+  // Component 1: Total Sleep Duration (TST) - 30% of score
+  const tstWeight = 30;
+
+  if (
+    duration_in_seconds >= optimalMinDuration &&
+    duration_in_seconds <= optimalMaxDuration
+  ) {
+    score += tstWeight;
+  } else {
+    // Deduct points for being outside optimal range
+    const deviation = Math.min(
+      Math.abs(duration_in_seconds - optimalMinDuration),
+      Math.abs(duration_in_seconds - optimalMaxDuration)
+    );
+    score += Math.max(0, tstWeight - (deviation / 3600) * 5); // 5 points deduction per hour deviation
+  }
+
+  // Component 2: Sleep Efficiency - 25% of score
+  const sleepEfficiency = (time_asleep_in_seconds / duration_in_seconds) * 100;
+  const optimalEfficiency = 85; // 85%
+  const efficiencyWeight = 25;
+
+  if (sleepEfficiency >= optimalEfficiency) {
+    score += efficiencyWeight;
+  } else {
+    score += Math.max(
+      0,
+      efficiencyWeight - (optimalEfficiency - sleepEfficiency) * 1
+    ); // 1 point deduction per % below optimal
+  }
+
+  // Component 3: Sleep Stage Distribution (Deep & REM) - 30% of score (15% each)
+  let deepSleepDuration = 0;
+  let remSleepDuration = 0;
+  let awakeDuration = 0;
+  let numAwakePeriods = 0;
+
+  if (stageEvents && stageEvents.length > 0) {
+    let inAwakePeriod = false;
+    for (const event of stageEvents) {
+      if (event.stage_type === 'deep') {
+        deepSleepDuration += event.duration_in_seconds;
+      } else if (event.stage_type === 'rem') {
+        remSleepDuration += event.duration_in_seconds;
+      } else if (event.stage_type === 'awake') {
+        awakeDuration += event.duration_in_seconds;
+        if (!inAwakePeriod) {
+          numAwakePeriods++;
+          inAwakePeriod = true;
+        }
+      } else {
+        inAwakePeriod = false;
+      }
+    }
+  }
+
+  const totalSleepStagesDuration =
+    deepSleepDuration +
+    remSleepDuration +
+    (time_asleep_in_seconds - awakeDuration);
+
+  if (totalSleepStagesDuration > 0) {
+    const deepSleepPercentage =
+      (deepSleepDuration / totalSleepStagesDuration) * 100;
+    const remSleepPercentage =
+      (remSleepDuration / totalSleepStagesDuration) * 100;
+
+    // Adjust optimal deep and REM sleep percentages based on age/gender if needed
+    if (age !== null) {
+      if (age >= 65) {
+        // Older adults might have less deep sleep
+        optimalDeepMin = 10;
+        optimalDeepMax = 20;
+      }
+    }
+
+    // Deep Sleep Score (15%)
+    const deepWeight = 15;
+    if (
+      deepSleepPercentage >= optimalDeepMin &&
+      deepSleepPercentage <= optimalDeepMax
+    ) {
+      score += deepWeight;
+    } else {
+      const deviation = Math.min(
+        Math.abs(deepSleepPercentage - optimalDeepMin),
+        Math.abs(deepSleepPercentage - optimalDeepMax)
+      );
+      score += Math.max(0, deepWeight - deviation * 0.5); // 0.5 point deduction per % deviation
+    }
+
+    // REM Sleep Score (15%)
+    const remWeight = 15;
+    if (
+      remSleepPercentage >= optimalRemMin &&
+      remSleepPercentage <= optimalRemMax
+    ) {
+      score += remWeight;
+    } else {
+      const deviation = Math.min(
+        Math.abs(remSleepPercentage - optimalRemMin),
+        Math.abs(remSleepPercentage - optimalRemMax)
+      );
+      score += Math.max(0, remWeight - deviation * 0.5); // 0.5 point deduction per % deviation
+    }
+  }
+
+  // Component 4: Disturbances (Awake Time/Periods) - 15% of score
+  const disturbanceWeight = 15;
+  let disturbanceDeduction = 0;
+
+  // Deduct for total awake time
+  disturbanceDeduction += (awakeDuration / 60) * 0.5; // 0.5 points deduction per minute awake
+
+  // Deduct for number of awake periods
+  disturbanceDeduction += numAwakePeriods * 2; // 2 points deduction per awake period
+
+  score += Math.max(0, disturbanceWeight - disturbanceDeduction);
+
+  // Ensure score is within 0-100 range
+  return Math.round(Math.max(0, Math.min(score, maxScore)));
 }
 
 export {
@@ -2015,6 +2178,7 @@ export {
   deleteCheckIn,
   getTdeeInputs,
   getBulkMeasurementHistory,
+  calculateSleepScore,
 };
 
 export default {
@@ -2048,4 +2212,5 @@ export default {
   deleteCheckIn,
   getTdeeInputs,
   getBulkMeasurementHistory,
+  calculateSleepScore,
 };

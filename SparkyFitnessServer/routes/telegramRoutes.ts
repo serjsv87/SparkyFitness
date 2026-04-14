@@ -1,14 +1,14 @@
 import express, { Request, Response, Router } from 'express';
-import { authenticate } from '../middleware/authMiddleware';
-import poolManager from '../db/poolManager';
-import { log } from '../config/logging';
+import { authenticate } from '../middleware/authMiddleware.js';
+import poolManager from '../db/poolManager.js';
+import { log } from '../config/logging.js';
 import crypto from 'crypto';
 import {
   telegramStatusResponseSchema,
   telegramLinkCodeResponseSchema,
   TelegramWebhookSchema,
 } from '@workspace/shared';
-import telegramBotService from '../integrations/telegram/telegramBotService';
+import telegramBotService from '../integrations/telegram/telegramBotService.js';
 
 const router: Router = express.Router();
 
@@ -130,4 +130,4 @@ router.post('/webhook', (req: Request, res: Response) => {
   }
 });
 
-module.exports = router;
+export default router;

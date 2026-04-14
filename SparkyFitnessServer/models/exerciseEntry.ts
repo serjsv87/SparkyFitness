@@ -434,7 +434,6 @@ async function _createExerciseEntryWithClient(
       'Apple Health',
     ];
     const isSyncSource = syncSources.includes(entrySource);
-    const syncDuplicateCheck = entryData.source_id ? true : false;
     const skipManualDuplicateCheck = isSyncSource;
     const syncDuplicateCheck = isSyncSource && !!entryData.source_id;
 
@@ -1121,7 +1120,11 @@ async function deleteExerciseEntriesByEntrySourceAndDate(
   }
 }
 
-async function getExerciseEntriesByDateRange(userId: any, startDate: any, endDate: any) {
+async function getExerciseEntriesByDateRange(
+  userId: any,
+  startDate: any,
+  endDate: any
+) {
   const client = await getClient(userId);
   try {
     const result = await client.query(

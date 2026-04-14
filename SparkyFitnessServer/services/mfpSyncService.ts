@@ -1,10 +1,8 @@
-import { log } from '../config/logging';
+import { log } from '../config/logging.js';
 import {
   pushNutritionToMFP,
-  pushWaterToMFP,
   MFPCategoryData,
-} from '../integrations/myfitnesspal/myFitnessPalService';
-import * as measurementRepository from '../models/measurementRepository';
+} from '../integrations/myfitnesspal/myFitnessPalService.js';
 
 // In-memory lock to prevent multiple concurrent syncs for the same user and date.
 const activeSyncs = new Set<string>();
@@ -40,7 +38,7 @@ export async function syncDailyNutritionToMFP(
 
   activeSyncs.add(lockKey);
 
-  const { getDailyNutritionByCategory } = require('./foodEntryService');
+  const { getDailyNutritionByCategory } = await import('./foodEntryService.js');
   try {
     log(
       'info',
@@ -79,7 +77,7 @@ export async function syncDailyNutritionToMFP(
       nutritionResult = await pushNutritionToMFP(userId, mfpData);
     }
 
-    // 2. Sync Water
+    /* Water sync to MFP disabled as per user request. Local count is source of truth.
     let waterSynced = false;
     try {
       const waterData = await measurementRepository.getWaterIntakeByDate(
@@ -102,6 +100,8 @@ export async function syncDailyNutritionToMFP(
         `mfpSyncService: Water sync failed for ${userId}: ${waterError.message}`
       );
     }
+    */
+    const waterSynced = false;
 
     if (!nutritionResult && !waterSynced) {
       return { status: 'skipped', date, reason: 'no_data_or_no_creds' };

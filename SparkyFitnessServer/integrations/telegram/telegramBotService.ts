@@ -1,13 +1,13 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { log } from '../../config/logging';
-import globalSettingsRepository from '../../models/globalSettingsRepository';
-import * as chatService from '../../services/chatService';
-import * as chatRepository from '../../models/chatRepository';
-import * as exerciseEntry from '../../models/exerciseEntry';
-import * as foodEntryRepository from '../../models/foodEntry';
-import * as poolManager from '../../db/poolManager';
-import { executeIntent } from './intentExecutor';
-import { TelegramAiService } from './telegramAiService';
+import { log } from '../../config/logging.js';
+import globalSettingsRepository from '../../models/globalSettingsRepository.js';
+import * as chatService from '../../services/chatService.js';
+import * as chatRepository from '../../models/chatRepository.js';
+import * as exerciseEntry from '../../models/exerciseEntry.js';
+import * as foodEntryRepository from '../../models/foodEntry.js';
+import * as poolManager from '../../db/poolManager.js';
+import { executeIntent } from './intentExecutor.js';
+import { TelegramAiService } from './telegramAiService.js';
 import axios from 'axios';
 import {
   TranslationSet,
@@ -15,9 +15,9 @@ import {
   getTranslations,
   getMainMenuKeyboard,
   getDiaryMenuKeyboard,
-} from './telegramTranslations';
-const bmrService = require('../../services/bmrService');
-const { loadUserTimezone } = require('../../utils/timezoneLoader');
+} from './telegramTranslations.js';
+import * as bmrService from '../../services/bmrService.js';
+import { loadUserTimezone } from '../../utils/timezoneLoader.js';
 import { todayInZone, addDays, instantToDay } from '@workspace/shared';
 
 /**
@@ -265,7 +265,7 @@ class TelegramBotService {
         await this.bot!.sendMessage(chatId, t.langSet, getMainMenuKeyboard(t));
         return this.bot!.answerCallbackQuery(query.id).catch(() => {});
       } else if (action === 'sync') {
-        const garminService = require('../../services/garminService');
+        const garminService = await import('../../services/garminService.js');
 
         if (type === 'garmin') {
           if (this.activeGarminSyncs.has(chatId)) {
@@ -354,7 +354,8 @@ class TelegramBotService {
           ) as any);
 
           try {
-            const mfpSyncService = require('../../services/mfpSyncService');
+            const mfpSyncService =
+              await import('../../services/mfpSyncService.js');
             const tz = (user as any).timezone || 'UTC';
             const today = todayInZone(tz);
             const totalDays = 7;
@@ -434,7 +435,8 @@ class TelegramBotService {
         const t = getTranslations(user.language);
         try {
           // Check if it's a check-in measurement or custom
-          const measurementService = require('../../services/measurementService');
+          const measurementService =
+            await import('../../services/measurementService.js');
           if (
             mType === 'weight' ||
             mType === 'neck' ||
@@ -443,9 +445,9 @@ class TelegramBotService {
             mType === 'steps' ||
             mType === 'height'
           ) {
-            await measurementService.deleteCheckInMeasurements(user.id, id);
+            await measurementService.deleteCheckIn(user.id, id);
           } else {
-            await measurementService.deleteCustomMeasurementEntry(user.id, id);
+            await measurementService.deleteCustomMeasurement(user.id, id);
           }
           await this.bot!.answerCallbackQuery(query.id, {
             text: t.deletedSuccess,
@@ -808,8 +810,6 @@ class TelegramBotService {
     user: TelegramUser
   ): Promise<void> {
     try {
-      const { todayInZone } = require('@workspace/shared');
-      const { loadUserTimezone } = require('../../utils/timezoneLoader');
       const tz = await loadUserTimezone(user.id);
       const today = todayInZone(tz);
 
@@ -894,8 +894,6 @@ class TelegramBotService {
     user: TelegramUser
   ): Promise<void> {
     try {
-      const { todayInZone } = require('@workspace/shared');
-      const { loadUserTimezone } = require('../../utils/timezoneLoader');
       const tz = await loadUserTimezone(user.id);
       const today = todayInZone(tz);
       const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -986,7 +984,9 @@ class TelegramBotService {
         grouped[dateString].forEach((ex) => {
           const durationVal = Math.round(ex.duration_minutes || 0);
           const durationText = durationVal > 0 ? `${durationVal}m` : '';
-          const cals = ex.calories ? ` (${Math.round(ex.calories)} kcal)` : '';
+          const cals = ex.calories_burned
+            ? ` (${Math.round(ex.calories_burned)} kcal)`
+            : '';
 
           let emoji = '🏋️';
           const name = (ex.exercise_name || ex.name || '').toLowerCase();
@@ -1150,7 +1150,7 @@ class TelegramBotService {
           const date = ex.entry_date
             ? instantToDay(ex.entry_date, tz)
             : 'Unknown';
-          return `- ${date}: ${ex.exercise_name || ex.name} (${ex.duration_minutes}m, ${ex.calories}kcal)`;
+          return `- ${date}: ${ex.exercise_name || ex.name} (${ex.duration_minutes}m, ${ex.calories_burned}kcal)`;
         })
         .join('\n');
     } catch (e) {

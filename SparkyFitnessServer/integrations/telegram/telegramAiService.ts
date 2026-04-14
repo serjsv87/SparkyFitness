@@ -1,14 +1,14 @@
-import { log } from '../../config/logging';
-import * as userRepository from '../../models/userRepository';
-import * as preferenceRepository from '../../models/preferenceRepository';
-import * as goalRepository from '../../models/goalRepository';
-import * as foodEntry from '../../models/foodEntry';
-import * as exerciseEntry from '../../models/exerciseEntry';
-import * as measurementRepository from '../../models/measurementRepository';
-import { todayInZone, instantToDay } from '@workspace/shared';
+import { log } from '../../config/logging.js';
+import * as userRepository from '../../models/userRepository.js';
+import * as preferenceRepository from '../../models/preferenceRepository.js';
+import * as goalRepository from '../../models/goalRepository.js';
+import * as foodEntry from '../../models/foodEntry.js';
+import * as exerciseEntry from '../../models/exerciseEntry.js';
+import * as measurementRepository from '../../models/measurementRepository.js';
+import { todayInZone, addDays, instantToDay } from '@workspace/shared';
 
-const bmrService = require('../../services/bmrService');
-const { loadUserTimezone } = require('../../utils/timezoneLoader');
+import * as bmrService from '../../services/bmrService.js';
+import { loadUserTimezone } from '../../utils/timezoneLoader.js';
 
 export class TelegramAiService {
   static buildContextBlock(
@@ -49,6 +49,7 @@ ${extraContext}
     try {
       const tz = await loadUserTimezone(userId);
       const today = todayInZone(tz);
+      const startDate = addDays(today, -7);
 
       const [
         profile,
@@ -56,6 +57,8 @@ ${extraContext}
         goal,
         todayFoods,
         todayExercises,
+        recentFoods,
+        recentExercises,
         latestMeasurement,
       ] = await Promise.all([
         userRepository.getUserProfile(userId),
@@ -63,6 +66,8 @@ ${extraContext}
         goalRepository.getMostRecentGoalBeforeDate(userId, today),
         foodEntry.getFoodEntriesByDate(userId, today),
         exerciseEntry.getExerciseEntriesByDate(userId, today),
+        foodEntry.getFoodEntriesByDateRange(userId, startDate, today),
+        exerciseEntry.getExerciseEntriesByDateRange(userId, startDate, today),
         measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate(
           userId,
           today
@@ -91,10 +96,12 @@ ${extraContext}
           weight,
           height,
           age,
-          gender
+          gender,
+          null
         );
+        const activityLevel = prefs.activity_level || 'sedentary';
         const multiplier =
-          bmrService.ActivityMultiplier[prefs.activity_level] || 1.2;
+          (bmrService.ActivityMultiplier as any)[activityLevel] || 1.2;
         tdee = bmr * multiplier;
       }
 
@@ -138,13 +145,24 @@ ${extraContext}
       if (goal?.protein)
         context += `- Macronutrient Targets: ${goal.protein}g P, ${goal.carbs}g C, ${goal.fat}g F\n`;
 
-      if (todayFoods.length > 0) {
-        context += `\nFOOD LOGGED TODAY:\n`;
-        todayFoods.forEach((f: any) => {
-          context += `- [${f.meal_type || 'snack'}] ${f.food_name || f.name}: ${f.quantity} ${f.unit} - ${Math.round(f.calories)} kcal (P:${Math.round(f.protein)}g, C:${Math.round(f.carbs)}g, F:${Math.round(f.fat)}g, Fiber:${Math.round(f.dietary_fiber || 0)}g)\n`;
+      if (recentFoods.length > 0) {
+        context += `\nFOOD HISTORY (LAST 7 DAYS):\n`;
+        recentFoods.forEach((f: any) => {
+          const date = f.entry_date
+            ? instantToDay(f.entry_date, tz)
+            : 'Unknown';
+          context += `- ${date} [${f.meal_type || 'snack'}] ${f.food_name || f.name}: ${f.calories} kcal\n`;
         });
-      } else {
-        context += `\nNo food logged today yet.\n`;
+      }
+
+      if (recentExercises.length > 0) {
+        context += `\nEXERCISE HISTORY (LAST 7 DAYS):\n`;
+        recentExercises.forEach((e: any) => {
+          const date = e.entry_date
+            ? instantToDay(e.entry_date, tz)
+            : 'Unknown';
+          context += `- ${date} ${e.exercise_name || e.name}: ${e.duration_minutes}m, ${e.calories_burned} kcal\n`;
+        });
       }
 
       return context;

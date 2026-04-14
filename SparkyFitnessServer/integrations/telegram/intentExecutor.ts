@@ -4,7 +4,7 @@
  * by calling service/repository functions directly.
  */
 
-import { log } from '../../config/logging';
+import { log } from '../../config/logging.js';
 
 /** ml per unit for water conversion */
 const WATER_ML_PER_UNIT: Record<string, number> = {
@@ -15,12 +15,12 @@ const WATER_ML_PER_UNIT: Record<string, number> = {
 };
 const DEFAULT_WATER_ML_PER_UNIT = 240;
 const DEFAULT_DRINK_ML = 250;
-import * as measurementService from '../../services/measurementService';
-import * as measurementRepository from '../../models/measurementRepository';
-import * as foodEntryService from '../../services/foodEntryService';
-import * as foodRepository from '../../models/foodRepository';
-import * as exerciseService from '../../services/exerciseService';
-import * as foodEntry from '../../models/foodEntry';
+import measurementService from '../../services/measurementService.js';
+import measurementRepository from '../../models/measurementRepository.js';
+import foodEntryService from '../../services/foodEntryService.js';
+import foodRepository from '../../models/foodRepository.js';
+import exerciseService from '../../services/exerciseService.js';
+import foodEntry from '../../models/foodEntry.js';
 
 /**
  * Execute a parsed AI intent for a given user.
@@ -89,7 +89,7 @@ export async function executeMeasurement(
 
     try {
       if (standardTypes.includes(type)) {
-        await measurementService.upsertCheckInMeasurements(
+        await measurementRepository.upsertCheckInMeasurements(
           userId,
           userId,
           dateToUse,
@@ -188,7 +188,7 @@ export async function executeWater(
           : 0
     );
 
-    const goalService = require('../../services/goalService');
+    const goalService = await import('../../services/goalService.js');
     const goals = await goalService.getUserGoals(userId, dateToUse);
     const goalML = goals ? Math.round(goals.water_goal_ml) : 2000;
 
@@ -359,7 +359,9 @@ export async function executeExercise(
       const results = await exerciseService.searchExercises(
         userId,
         name,
-        userId
+        userId,
+        null,
+        null
       );
       if (results && results.length > 0) {
         exerciseId = results[0].id;
