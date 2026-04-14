@@ -137,7 +137,7 @@ export async function executeMeasurement(
   }
 
   if (confirmed.length === 0) {
-    return `❌ Не вдалося записати виміри.`;
+    return '❌ Не вдалося записати виміри.';
   }
 
   let msg = `✅ Записано (${dateToUse}):\n${confirmed.map((c) => `  • ${c}`).join('\n')}`;

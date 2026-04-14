@@ -127,15 +127,19 @@ export async function handleAiServiceSettings(
       if (!result) {
         throw new Error('AI service setting not found.');
       }
-      const { encrypted_api_key, api_key_iv, api_key_tag, ...safeSetting } =
-        result;
+      const {
+        encrypted_api_key: _enc,
+        api_key_iv: _iv,
+        api_key_tag: _tag,
+        ...safeSetting
+      } = result;
       return {
         message: 'AI service settings saved successfully.',
         setting: safeSetting,
       };
     }
     throw new Error('Unsupported action for AI service settings.');
-  } catch (error: any) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error handling AI service settings for user ${authenticatedUserId}:`,

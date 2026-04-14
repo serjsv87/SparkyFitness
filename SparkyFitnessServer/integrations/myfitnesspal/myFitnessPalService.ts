@@ -75,16 +75,16 @@ async function getMFPSession(userId: string): Promise<MFPSession | null> {
       const newCookies = setCookie.map((c) => c.split(';')[0]).join('; ');
       currentCookies = `${currentCookies}; ${newCookies}`;
     }
-  } catch (e: any) {
+  } catch (error: unknown) {
     log(
       'warn',
-      `MFP getSession: CSRF fetch fallback for ${userId}: ${e.message}`
+      `MFP getSession: CSRF fetch fallback for ${userId}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 
   // 2. Fetch Bearer Token
-  let bearerToken = '';
-  let mfpUserId = '';
+  let bearerToken: string;
+  let mfpUserId: string;
   try {
     const authResp = await axios.get(
       'https://www.myfitnesspal.com/user/auth_token',
@@ -105,9 +105,12 @@ async function getMFPSession(userId: string): Promise<MFPSession | null> {
     } else {
       throw new Error('Access token missing.');
     }
-  } catch (e: any) {
-    log('error', `MFP getSession: Auth failed for ${userId}: ${e.message}`);
-    throw new Error(`Authentication failed: ${e.message}`);
+  } catch (error: unknown) {
+    log(
+      'error',
+      `MFP getSession: Auth failed for ${userId}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    throw new Error('Authentication failed', { cause: error });
   }
 
   return {
@@ -151,10 +154,10 @@ export async function pushNutritionToMFP(
       let diaryResp;
       try {
         diaryResp = await axios.get(discoveryUrl, { headers: authHeaders });
-      } catch (e: any) {
+      } catch (error: unknown) {
         log(
           'warn',
-          `pushNutritionToMFP: Discovery via types failed, retrying without types: ${e.message}`
+          `pushNutritionToMFP: Discovery via types failed, retrying without types: ${error instanceof Error ? error.message : String(error)}`
         );
         diaryResp = await axios.get(
           `https://api.myfitnesspal.com/v2/diary?entry_date=${data.date}`,
@@ -165,7 +168,7 @@ export async function pushNutritionToMFP(
       if (diaryResp.data && Array.isArray(diaryResp.data.items)) {
         const items = diaryResp.data.items;
         const itemsWithId = items.filter(
-          (item: any) =>
+          (item: { id?: string; item_id?: string; type?: string }) =>
             (item.id || item.item_id) &&
             (item.type === 'quick_add' || item.type === 'food_entry')
         );
@@ -178,7 +181,7 @@ export async function pushNutritionToMFP(
           for (let i = 0; i < itemsWithId.length; i += DELETE_CONCURRENCY) {
             const batch = itemsWithId.slice(i, i + DELETE_CONCURRENCY);
             await Promise.all(
-              batch.map(async (item: any) => {
+              batch.map(async (item: { id?: string; item_id?: string }) => {
                 const itemId = item.id || item.item_id;
                 try {
                   await axios.delete(
@@ -187,16 +190,18 @@ export async function pushNutritionToMFP(
                       headers: authHeaders,
                     }
                   );
-                } catch (e) {}
+                } catch {
+                  /* ignore deletion errors for individual items */
+                }
               })
             );
           }
         }
       }
-    } catch (e: any) {
+    } catch (error: unknown) {
       log(
         'warn',
-        `pushNutritionToMFP: Cleanup failed for user ${userId}: ${e.message}`
+        `pushNutritionToMFP: Cleanup failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
 

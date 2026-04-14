@@ -675,7 +675,7 @@ class TelegramBotService {
       const userPlan = includePlanContext ? aiService.system_prompt || '' : '';
 
       const processAiTurn = async (forceDataRequest: string | null = null) => {
-        let historyContext = chatHistory.map((h: any) => {
+        const historyContext = chatHistory.map((h: any) => {
           const ts = h.created_at
             ? new Date(h.created_at).toLocaleString('uk-UA', {
                 timeZone: (user as any).timezone || 'UTC',
@@ -745,7 +745,7 @@ class TelegramBotService {
         return response;
       };
 
-      let response = await processAiTurn();
+      const response = await processAiTurn();
 
       if (response && (response.text || response.content)) {
         let rawReplyText = response.text || response.content;
@@ -782,9 +782,12 @@ class TelegramBotService {
           await this.tryExecuteIntent(chatId, user, response);
         }
       }
-    } catch (e: any) {
-      log('error', '[TELEGRAM BOT] Error processing message:', e);
-      this.bot!.sendMessage(chatId, `❌ AI Error: ${e.message}`);
+    } catch (error: unknown) {
+      log('error', '[TELEGRAM BOT] Error processing message:', error);
+      this.bot!.sendMessage(
+        chatId,
+        `❌ AI Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       clearInterval(typingInterval);
     }
@@ -882,7 +885,8 @@ class TelegramBotService {
         // and remove any trigger words like "last 10" or "history"
         {
           role: 'user',
-          content: `[SYSTEM: Data fetched. Read the SYSTEM UPDATE above and summarize the entries provided.]`,
+          content:
+            '[SYSTEM: Data fetched. Read the SYSTEM UPDATE above and summarize the entries provided.]',
         },
       ];
 
@@ -903,9 +907,12 @@ class TelegramBotService {
       );
 
       return response;
-    } catch (e: any) {
-      log('error', '[TELEGRAM BOT] Error handling data request:', e);
-      this.bot!.sendMessage(chatId, `❌ AI Data Fetch Error: ${e.message}`);
+    } catch (error: unknown) {
+      log('error', '[TELEGRAM BOT] Error handling data request:', error);
+      this.bot!.sendMessage(
+        chatId,
+        `❌ AI Data Fetch Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       clearInterval(typingInterval);
     }
@@ -971,8 +978,8 @@ class TelegramBotService {
           reply_markup: { inline_keyboard: buttons },
         });
       }
-    } catch (e: any) {
-      log('error', '[TELEGRAM BOT] Intent execution error:', e);
+    } catch (error: unknown) {
+      log('error', '[TELEGRAM BOT] Intent execution error:', error);
     }
   }
 
@@ -986,7 +993,7 @@ class TelegramBotService {
 
       const client = await poolManager.getSystemClient();
       const result = await client.query(
-        `SELECT * FROM food_entries WHERE user_id = $1 AND entry_date = $2`,
+        'SELECT * FROM food_entries WHERE user_id = $1 AND entry_date = $2',
         [user.id, today]
       );
       const todayFood = result.rows;
@@ -1321,7 +1328,7 @@ class TelegramBotService {
           return `- ${date}: ${ex.exercise_name || ex.name} (${ex.duration_minutes}m, ${ex.calories_burned}kcal)`;
         })
         .join('\n');
-    } catch (e) {
+    } catch {
       return 'Error fetching exercise summary.';
     }
   }
