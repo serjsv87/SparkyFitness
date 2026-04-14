@@ -17,6 +17,7 @@ export interface AiServiceSetting {
   api_key_iv?: string;
   api_key_tag?: string;
   source?: string;
+  timeout?: number;
 }
 
 export interface ChatHistoryEntry {

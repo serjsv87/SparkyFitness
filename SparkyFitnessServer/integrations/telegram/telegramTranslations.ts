@@ -59,9 +59,10 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       syncGarmin: 'Garmin Data Sync',
       syncMFP: 'Sync with FitnessPal',
       syncMFPInProgress: '🔄 Syncing with MyFitnessPal (today)...',
-      syncMFPSuccess: '✅ Today\'s data successfully sent to MyFitnessPal!',
+      syncMFPSuccess: "✅ Today's data successfully sent to MyFitnessPal!",
       syncMFPError: '❌ MyFitnessPal sync error: {{error}}',
-      syncMFPPendingMerge: '⚠️ MyFitnessPal integration is pending main branch merge.',
+      syncMFPPendingMerge:
+        '⚠️ MyFitnessPal integration is pending main branch merge.',
       addWater: '+ 1🥛',
       deleteConfirm: 'Are you sure you want to delete this record?',
       deletedSuccess: '✅ Record deleted successfully.',
@@ -90,7 +91,8 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       syncMFPInProgress: '🔄 Синхронізація з MyFitnessPal (сьогодні)...',
       syncMFPSuccess: '✅ Дані за сьогодні успішно відправлені в MyFitnessPal!',
       syncMFPError: '❌ Помилка синхронізації MFP: {{error}}',
-      syncMFPPendingMerge: '⚠️ Інтеграція MyFitnessPal очікує злиття з основною гілкою.',
+      syncMFPPendingMerge:
+        '⚠️ Інтеграція MyFitnessPal очікує злиття з основною гілкою.',
       addWater: '+ 1🥛',
       deleteConfirm: 'Ви впевнені, що хочете видалити цей запис?',
       deletedSuccess: '✅ Запис успішно видалено.',
@@ -119,7 +121,8 @@ export function getTranslations(lang: string = 'en'): TranslationSet {
       syncMFPInProgress: '🔄 Синхронизация с MyFitnessPal (сегодня)...',
       syncMFPSuccess: '✅ Данные за сегодня успешно отправлены в MyFitnessPal!',
       syncMFPError: '❌ Ошибка синхронизации MFP: {{error}}',
-      syncMFPPendingMerge: '⚠️ Интеграция MyFitnessPal ожидает слияния с основной веткой.',
+      syncMFPPendingMerge:
+        '⚠️ Интеграция MyFitnessPal ожидает слияния с основной веткой.',
       addWater: '+ 1🥛',
       deleteConfirm: 'Вы уверены, что хотите удалить эту запись?',
       deletedSuccess: '✅ Запись успешно удалена.',

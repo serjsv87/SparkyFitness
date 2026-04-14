@@ -96,6 +96,12 @@ async function extractNutritionFromLabel(
                   : aiService.service_type === 'openrouter'
                     ? 'https://openrouter.ai/api/v1/chat/completions'
                     : aiService.custom_url;
+        if (!url) {
+          return {
+            success: false,
+            error: 'Custom URL is missing for non-standard AI service.',
+          };
+        }
         response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -133,7 +139,7 @@ async function extractNutritionFromLabel(
           headers: {
             'Content-Type': 'application/json',
             'anthropic-version': '2023-06-01',
-            'x-api-key': apiKey,
+            'x-api-key': apiKey as string,
           },
           body: JSON.stringify({
             model,

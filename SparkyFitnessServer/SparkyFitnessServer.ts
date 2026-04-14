@@ -342,7 +342,7 @@ app.use('/api', (req, res, next) => {
     '/api/ping',
     '/api/telegram/webhook',
   ];
-  if (publicApiRoutes.some(route => req.path.startsWith(route))) {
+  if (publicApiRoutes.some((route) => req.path.startsWith(route))) {
     return next();
   }
   onBehalfOfMiddleware(req, res, next);

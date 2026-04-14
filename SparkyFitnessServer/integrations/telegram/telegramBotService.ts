@@ -621,7 +621,10 @@ class TelegramBotService {
   ): string {
     if (!usage) return '';
     const suffix = usage.estimated ? ' (estimated)' : '';
-    return `\n\n<code>AI cost: in ${usage.inputTokens}, out ${usage.outputTokens}, total ${usage.totalTokens} tokens${suffix}</code>`;
+    const cost =
+      (0.075 * usage.inputTokens + 0.3 * usage.outputTokens) / 1000000;
+
+    return `\n\n<code>AI cost: in ${usage.inputTokens}, out ${usage.outputTokens}, total ${usage.totalTokens} tokens${suffix} \n\n if gemini 3.1 flash lite: ${cost.toFixed(6)} $</code>`;
   }
 
   async processMessage(
@@ -658,8 +661,7 @@ class TelegramBotService {
         contextMode === 'food' || contextMode === 'analysis';
       const includeExerciseContext =
         contextMode === 'exercise' || contextMode === 'analysis';
-      const includePlanContext =
-        includeFoodContext || contextMode === 'analysis';
+      const includePlanContext = includeFoodContext;
 
       const [exerciseSummary, nutritionContext] = await Promise.all([
         includeExerciseContext
