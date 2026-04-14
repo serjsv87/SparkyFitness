@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-const telegramBotService = require('../integrations/telegram/telegramBotService');
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+import telegramBotService from '../integrations/telegram/telegramBotService.js';
 import poolManager from '../db/poolManager.js';
+import { executeIntent as _executeIntent } from '../integrations/telegram/intentExecutor.js';
 
 import userRepository from '../models/userRepository.js';
 import goalRepository from '../models/goalRepository.js';
@@ -39,7 +40,7 @@ describe('TelegramBotService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (poolManager.getSystemClient as any).mockResolvedValue(mockClient);
+    (poolManager.getSystemClient as Mock).mockResolvedValue(mockClient);
   });
 
   describe('findUserAndLanguageByChatId', () => {
@@ -54,7 +55,10 @@ describe('TelegramBotService', () => {
 
       // Accessing private method for testing
       const result = await (
-        telegramBotService as any
+        telegramBotService as unknown as Record<
+          string,
+          (id: number) => Promise<unknown>
+        >
       ).findUserAndLanguageByChatId(mockChatId);
 
       expect(mockClient.query).toHaveBeenCalledWith(
@@ -68,7 +72,10 @@ describe('TelegramBotService', () => {
       mockClient.query.mockResolvedValue({ rows: [] });
 
       const result = await (
-        telegramBotService as any
+        telegramBotService as unknown as Record<
+          string,
+          (id: number) => Promise<unknown>
+        >
       ).findUserAndLanguageByChatId(mockChatId);
 
       expect(result).toBeNull();
@@ -77,17 +84,32 @@ describe('TelegramBotService', () => {
 
   describe('getTranslations', () => {
     it('should return English translations by default', () => {
-      const t = (telegramBotService as any).getTranslations('en');
+      const t = (
+        telegramBotService as unknown as Record<
+          string,
+          (l: string) => Record<string, string>
+        >
+      ).getTranslations('en');
       expect(t.greeting).toBeDefined();
     });
 
     it('should return Ukrainian translations for "uk"', () => {
-      const t = (telegramBotService as any).getTranslations('uk');
+      const t = (
+        telegramBotService as unknown as Record<
+          string,
+          (l: string) => Record<string, string>
+        >
+      ).getTranslations('uk');
       expect(t.greeting).toBe('Привіт');
     });
 
     it('should fallback to English for unknown language', () => {
-      const t = (telegramBotService as any).getTranslations('fr');
+      const t = (
+        telegramBotService as unknown as Record<
+          string,
+          (l: string) => Record<string, string>
+        >
+      ).getTranslations('fr');
       expect(t.greeting).toBe('Hello');
     });
   });
@@ -101,10 +123,12 @@ describe('TelegramBotService', () => {
         .mockResolvedValueOnce({}); // Second query (update user)
 
       // Mock bot.sendMessage
-      (telegramBotService as any).bot = { sendMessage: vi.fn() };
-      (telegramBotService as any).getMainMenuKeyboard = vi
-        .fn()
-        .mockReturnValue({});
+      (telegramBotService as unknown as Record<string, unknown>).bot = {
+        sendMessage: vi.fn(),
+      };
+      (
+        telegramBotService as unknown as Record<string, Mock>
+      ).getMainMenuKeyboard = vi.fn().mockReturnValue({});
 
       await telegramBotService.handleLink(mockChatId, mockCode);
 
@@ -116,7 +140,10 @@ describe('TelegramBotService', () => {
         expect.stringContaining('UPDATE public."user" SET telegram_chat_id'),
         [String(mockChatId), mockUserId]
       );
-      expect((telegramBotService as any).bot.sendMessage).toHaveBeenCalledWith(
+      expect(
+        (telegramBotService as unknown as Record<string, { sendMessage: Mock }>)
+          .bot.sendMessage
+      ).toHaveBeenCalledWith(
         mockChatId,
         expect.stringContaining('Success'),
         expect.any(Object)
@@ -127,11 +154,16 @@ describe('TelegramBotService', () => {
       const mockCode = 'INVALID';
       mockClient.query.mockResolvedValue({ rows: [] });
 
-      (telegramBotService as any).bot = { sendMessage: vi.fn() };
+      (telegramBotService as unknown as Record<string, unknown>).bot = {
+        sendMessage: vi.fn(),
+      };
 
       await telegramBotService.handleLink(mockChatId, mockCode);
 
-      expect((telegramBotService as any).bot.sendMessage).toHaveBeenCalledWith(
+      expect(
+        (telegramBotService as unknown as Record<string, { sendMessage: Mock }>)
+          .bot.sendMessage
+      ).toHaveBeenCalledWith(
         mockChatId,
         expect.stringContaining('Invalid linking code')
       );
@@ -146,23 +178,26 @@ describe('TelegramBotService', () => {
         { calories: 1500, protein: 100, carbs: 150, fat: 50 },
       ];
 
-      (userRepository.getUserProfile as any).mockResolvedValue(mockProfile);
-      (goalRepository.getMostRecentGoalBeforeDate as any).mockResolvedValue(
+      (userRepository.getUserProfile as Mock).mockResolvedValue(mockProfile);
+      (goalRepository.getMostRecentGoalBeforeDate as Mock).mockResolvedValue(
         mockGoal
       );
-      (foodEntry.getFoodEntriesByDate as any).mockResolvedValue(
+      (foodEntry.getFoodEntriesByDate as Mock).mockResolvedValue(
         mockDailyProgress
       );
       (
-        measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate as any
+        measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate as Mock
       ).mockResolvedValue({ weight: 80, height: 180 });
-      (preferenceRepository.getUserPreferences as any).mockResolvedValue({
+      (preferenceRepository.getUserPreferences as Mock).mockResolvedValue({
         activity_level: 'sedentary',
       });
 
-      const context = await (telegramBotService as any).getUserNutritionContext(
-        mockUserId
-      );
+      const context = await (
+        telegramBotService as unknown as Record<
+          string,
+          (id: string) => Promise<string>
+        >
+      ).getUserNutritionContext(mockUserId);
 
       expect(context).toContain('80kg');
       expect(context).toContain('Male');
@@ -173,9 +208,6 @@ describe('TelegramBotService', () => {
 
   describe('executeIntent', () => {
     it('should return a detailed success message when logging food with macros', async () => {
-      const {
-        executeIntent: _executeIntent,
-      } = require('../integrations/telegram/intentExecutor');
       // Mock executeIntent directly or test the service's reaction
       // In this case, we verify that the service handles the response correctly
     });

@@ -118,7 +118,7 @@ function extractAiUsageStats(
 }
 
 function estimateAiUsageStats(
-  messages: ChatMessage[] | any[],
+  messages: ChatMessage[] | Record<string, unknown>[],
   content: string
 ): AiUsageStats {
   const promptChars = JSON.stringify(messages ?? []).length;
@@ -643,7 +643,10 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
           contents: messagesForAI
             .map((msg) => {
               const role = msg.role === 'assistant' ? 'model' : 'user';
-              let parts: any[] = [];
+              let parts: {
+                text?: string;
+                inline_data?: { mime_type: string; data: string };
+              }[] = [];
               if (typeof msg.content === 'string') {
                 parts.push({ text: msg.content });
               } else if (Array.isArray(msg.content)) {
@@ -706,7 +709,9 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
               };
             })
             .filter((content) => content.parts.length > 0),
-          systemInstruction: undefined as any,
+          systemInstruction: undefined as
+            | { parts: { text: string }[] }
+            | undefined,
         };
 
         if (googleBody.contents.length === 0) {
@@ -716,7 +721,7 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
         }
 
         if (cleanSystemPrompt && cleanSystemPrompt.length > 0) {
-          (googleBody as any).systemInstruction = {
+          googleBody.systemInstruction = {
             parts: [{ text: cleanSystemPrompt }],
           };
         }
@@ -770,7 +775,7 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
           return { role: msg.role, content: contentString };
         });
 
-        const timeout = (aiService as any).timeout || 1200000;
+        const timeout = (aiService as { timeout?: number }).timeout || 1200000;
         log('info', `Ollama chat request timeout set to ${timeout}ms`);
 
         const ollamaAgent = new Agent({
@@ -794,21 +799,23 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
               stream: false,
             }),
             dispatcher: ollamaAgent,
-          } as any);
-        } catch (error: any) {
+          } as RequestInit);
+        } catch (error: unknown) {
+          const isErrorObject = error instanceof Error;
+          const message = isErrorObject ? error.message : String(error);
+          const errorName = isErrorObject ? error.name : '';
+
           if (
-            error.name === 'HeadersTimeoutError' ||
-            error.name === 'BodyTimeoutError'
+            errorName === 'HeadersTimeoutError' ||
+            errorName === 'BodyTimeoutError'
           ) {
-            throw new Error(
-              `Ollama chat request timed out after ${timeout}ms due to undici timeout.`,
-              { cause: error }
+            log(
+              'error',
+              `Ollama request TIMED OUT after ${timeout}ms for user ${authenticatedUserId}: ${message}`
             );
+            throw new Error(`AI service request timed out (${timeout}ms).`);
           }
-          throw new Error(
-            `AI service API call error: 502 - Ollama fetch error: ${error.message}`,
-            { cause: error }
-          );
+          throw error;
         } finally {
           ollamaAgent.destroy();
         }
@@ -1081,7 +1088,7 @@ export async function processFoodOptionsRequest(
               stream: false,
             }),
             dispatcher: ollamaAgentFoodOptions,
-          } as any);
+          } as RequestInit);
         } finally {
           ollamaAgentFoodOptions.destroy();
         }

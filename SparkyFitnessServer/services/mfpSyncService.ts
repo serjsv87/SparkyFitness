@@ -14,7 +14,7 @@ interface SyncResult {
   date: string;
   reason?: string;
   message?: string;
-  responses?: any[];
+  responses?: Record<string, unknown>[];
   waterSynced?: boolean;
 }
 
@@ -95,10 +95,12 @@ export async function syncDailyNutritionToMFP(
           `mfpSyncService: Successfully synced ${waterMl}ml water to MFP for ${userId}`
         );
       }
-    } catch (waterError: any) {
+    } catch (waterError: unknown) {
+      const message =
+        waterError instanceof Error ? waterError.message : String(waterError);
       log(
         'warn',
-        `mfpSyncService: Water sync failed for ${userId}: ${waterError.message}`
+        `mfpSyncService: Water sync failed for ${userId}: ${message}`
       );
     }
 

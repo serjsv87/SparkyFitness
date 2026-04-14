@@ -901,8 +901,8 @@ async function syncGarminHydration(
 
       // Remove unwanted metadata fields
       delete goalPayload.id;
-      delete (goalPayload as any).created_at;
-      delete (goalPayload as any).updated_at;
+      delete (goalPayload as Record<string, unknown>).created_at;
+      delete (goalPayload as Record<string, unknown>).updated_at;
 
       await goalRepository.upsertGoal(goalPayload);
     }
@@ -1102,7 +1102,7 @@ async function syncGarminData(
       measurementServiceResult,
       processedSleepData,
     };
-  } catch (healthError: any) {
+  } catch (healthError: unknown) {
     log(
       'error',
       `[garminService] Error during health sync for user ${userId}:`,
@@ -1134,7 +1134,7 @@ async function syncGarminData(
       tz
     );
     results.activities = processedActivities;
-  } catch (activitiesError: any) {
+  } catch (activitiesError: unknown) {
     log(
       'error',
       `[garminService] Error during activities sync for user ${userId}:`,
