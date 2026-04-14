@@ -1,4 +1,6 @@
 import { log } from '../config/logging.js';
+import poolManager from '../db/poolManager.js';
+import measurementRepository from '../models/measurementRepository.js';
 import exerciseEntryRepository from '../models/exerciseEntry.js';
 import exerciseRepository from '../models/exercise.js';
 import activityDetailsRepository from '../models/activityDetailsRepository.js';
@@ -773,7 +775,12 @@ async function syncGarminHydration(
       return;
     }
 
-    const { goalInML, sweatLossInML } = garminState;
+    const {
+      goalInML,
+      valueInML: garminValueInML,
+      userProfileId,
+      sweatLossInML,
+    } = garminState;
 
     // 2. Update SparkyFitness goal if it has changed from Garmin's goal
     const currentGoals = await goalService.getUserGoals(userId, date);
@@ -803,9 +810,62 @@ async function syncGarminHydration(
       await goalRepository.upsertGoal(goalPayload);
     }
 
-    /* Water intake sync disabled as per user request. Local count is source of truth.
-    // Sync water intake logic removed...
-    */
+    // 3. Sync water intake
+    // We treat 'manual' and 'mfp' sources as the User's Intent.
+    // We treat 'garmin' source in Sparky as the Mirror of what's already on the watch.
+    const client = await poolManager.getClient(userId);
+    let sparkyIntentML = 0;
+    try {
+      const result = await client.query(
+        "SELECT SUM(water_ml) as total FROM water_intake WHERE user_id = $1 AND entry_date = $2 AND source IN ('manual', 'mfp')",
+        [userId, date]
+      );
+      sparkyIntentML = Math.round(Number(result.rows[0]?.total || 0));
+    } finally {
+      client.release();
+    }
+
+    if (sparkyIntentML === 0 && garminValueInML > 0 && !isManualTrigger) {
+      // CASE A: Background sync and no manual logs in Sparky.
+      // ACTION: Import from Garmin watch to Sparky (assume user logged on watch first).
+      log(
+        'info',
+        `[WATER_SYNC] Background Import: ${garminValueInML} mL from watch to Sparky for user ${userId} on ${date}`
+      );
+      await measurementRepository.upsertWaterData(
+        userId,
+        userId,
+        garminValueInML,
+        date,
+        'garmin'
+      );
+    } else {
+      // CASE B: Manual trigger or Sparky has logs.
+      // ACTION: Sparky is Master. Make Garmin match Sparky's INTENTIONAL total (even if 0).
+      const diffML = Math.round(sparkyIntentML - garminValueInML);
+
+      if (Math.abs(diffML) > 10) {
+        log(
+          'info',
+          `[WATER_SYNC] Exporting to Garmin: ${diffML} mL diff for user ${userId} on ${date} (Intent: ${sparkyIntentML} mL, Watch: ${garminValueInML} mL)`
+        );
+        await garminConnectService.logGarminHydration(userId, date, diffML, {
+          userProfileId,
+        });
+      }
+
+      // CRITICAL: Once Sparky Intent is established, we must ensure there's no duplicate
+      // 'garmin' bucket entry that would inflate the total when summed.
+      const clientCleanup = await poolManager.getClient(userId);
+      try {
+        await clientCleanup.query(
+          "DELETE FROM water_intake WHERE user_id = $1 AND entry_date = $2 AND source = 'garmin'",
+          [userId, date]
+        );
+      } finally {
+        clientCleanup.release();
+      }
+    }
   } catch (err: any) {
     log(
       'error',

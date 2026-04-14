@@ -1267,29 +1267,25 @@ async function upsertWaterIntake(
       });
     */
 
-    /* Debounced Repair Sync disabled as per user request. Local count is source of truth.
-    if (!global.hydrationSyncTimers) global.hydrationSyncTimers = {};
+    if (!(global as any).hydrationSyncTimers)
+      (global as any).hydrationSyncTimers = {};
     const timerKey = `${authenticatedUserId}-${entryDate}`;
-    if (global.hydrationSyncTimers[timerKey]) {
-      clearTimeout(global.hydrationSyncTimers[timerKey]);
+    if ((global as any).hydrationSyncTimers[timerKey]) {
+      clearTimeout((global as any).hydrationSyncTimers[timerKey]);
     }
-    global.hydrationSyncTimers[timerKey] = setTimeout(async () => {
-      delete global.hydrationSyncTimers[timerKey];
+    (global as any).hydrationSyncTimers[timerKey] = setTimeout(async () => {
+      delete (global as any).hydrationSyncTimers[timerKey];
       log(
         'info',
-        `[WATER_SYNC] Running debounced Repair Sync to align totals for user ${authenticatedUserId} on ${entryDate}`
+        `[WATER_SYNC] Running debounced sync to align totals for user ${authenticatedUserId} on ${entryDate}`
       );
       const garminService = await import('./garminService.js');
       garminService.default
         .syncGarminHydration(authenticatedUserId, entryDate, true)
         .catch((err: any) => {
-          log(
-            'error',
-            `[WATER_SYNC] Debounced Repair Sync failed: ${err.message}`
-          );
+          log('error', `[WATER_SYNC] Debounced sync failed: ${err.message}`);
         });
     }, 3000);
-    */
 
     return result;
   } catch (error) {
