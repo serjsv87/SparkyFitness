@@ -573,14 +573,14 @@ class TelegramBotService {
           },
         ];
         log(
-          'debug',
-          `[TELEGRAM AI] Sending context to AI for user ${user.id}:\n` +
-            `=== SYSTEM CONTEXT ===\n${contextBlock}\n` +
-            `=== HISTORY (${historyContext.length} messages) ===\n` +
+          'info',
+          `[TELEGRAM AI] Sending to AI for user ${user.id}:\n` +
+            `--- SYSTEM CONTEXT ---\n${contextBlock}\n` +
+            `--- HISTORY (${historyContext.length} msgs) ---\n` +
             historyContext
               .map((m: any, i: number) => `[${i + 1}] ${m.role}: ${m.content}`)
               .join('\n') +
-            `\n=== CURRENT USER MESSAGE ===\n${forceDataRequest ? forceDataRequest : JSON.stringify(contentParts)}`
+            `\n--- USER MESSAGE ---\n${forceDataRequest ? forceDataRequest : JSON.stringify(contentParts)}`
         );
 
         const response = await chatService.processChatMessage(
@@ -617,7 +617,19 @@ class TelegramBotService {
       let response = await processAiTurn();
 
       if (response && (response.text || response.content)) {
-        const replyText = response.text || response.content;
+        let rawReplyText = response.text || response.content;
+        // Guard: if AI returned raw JSON, extract the response field
+        if (rawReplyText.trimStart().startsWith('{')) {
+          try {
+            const j = JSON.parse(rawReplyText);
+            if (j.response || j.responseText)
+              rawReplyText = j.response || j.responseText;
+          } catch {
+            /* not valid JSON, use as-is */
+          }
+        }
+        // Telegram HTML mode doesn't support <br> — replace with newlines
+        const replyText = rawReplyText.replace(/<br\s*\/?>/gi, '\n');
         await chatRepository.saveChatMessage(
           user.id,
           msg.text || '[Multi-modal]',
