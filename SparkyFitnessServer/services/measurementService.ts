@@ -1267,28 +1267,29 @@ async function upsertWaterIntake(
       });
     */
 
-    // 2. Debounced "Repair Sync" (ensures Sparky and Garmin totals eventually match)
-    // We wait 3 seconds after the last action before performing a final alignment check.
+    /* Debounced Repair Sync disabled as per user request. Local count is source of truth.
     if (!global.hydrationSyncTimers) global.hydrationSyncTimers = {};
     const timerKey = `${authenticatedUserId}-${entryDate}`;
     if (global.hydrationSyncTimers[timerKey]) {
       clearTimeout(global.hydrationSyncTimers[timerKey]);
     }
-    global.hydrationSyncTimers[timerKey] = setTimeout(() => {
+    global.hydrationSyncTimers[timerKey] = setTimeout(async () => {
       delete global.hydrationSyncTimers[timerKey];
       log(
         'info',
         `[WATER_SYNC] Running debounced Repair Sync to align totals for user ${authenticatedUserId} on ${entryDate}`
       );
-      garminService
+      const garminService = await import('./garminService.js');
+      garminService.default
         .syncGarminHydration(authenticatedUserId, entryDate, true)
-        .catch((err) => {
+        .catch((err: any) => {
           log(
             'error',
             `[WATER_SYNC] Debounced Repair Sync failed: ${err.message}`
           );
         });
     }, 3000);
+    */
 
     return result;
   } catch (error) {
