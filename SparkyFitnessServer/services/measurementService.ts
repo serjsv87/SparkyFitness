@@ -1436,6 +1436,33 @@ async function deleteWaterIntake(authenticatedUserId: any, id: any) {
     throw error;
   }
 }
+async function getCheckInMeasurementsByDateRange(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  authenticatedUserId: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  targetUserId: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  startDate: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  endDate: any
+) {
+  try {
+    const measurements =
+      await measurementRepository.getCheckInMeasurementsByDateRange(
+        targetUserId,
+        startDate,
+        endDate
+      );
+    return measurements || [];
+  } catch (error) {
+    log(
+      'error',
+      `Error fetching check-in measurements range for user ${targetUserId} by ${authenticatedUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
 async function getCheckInMeasurements(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   authenticatedUserId: any,
@@ -1445,10 +1472,11 @@ async function getCheckInMeasurements(
   date: any
 ) {
   try {
-    const measurements = await measurementRepository.getCheckInMeasurements(
-      targetUserId,
-      date
-    );
+    const measurements =
+      await measurementRepository.getCheckInMeasurementsByDate(
+        targetUserId,
+        date
+      );
     return measurements || {};
   } catch (error) {
     log(
@@ -2159,6 +2187,7 @@ export {
   updateWaterIntake,
   deleteWaterIntake,
   getCheckInMeasurements,
+  getCheckInMeasurementsByDateRange,
   getCustomCategories,
   getCustomCategoryById,
   createCustomCategory,
@@ -2193,6 +2222,7 @@ export default {
   updateWaterIntake,
   deleteWaterIntake,
   getCheckInMeasurements,
+  getCheckInMeasurementsByDateRange,
   getCustomCategories,
   getCustomCategoryById,
   createCustomCategory,
