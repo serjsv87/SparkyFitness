@@ -128,9 +128,9 @@ async function processActivitiesAndWorkouts(
   }
   // Process standalone Workouts (definitions)
   if (workouts && Array.isArray(workouts)) {
-    for (const workoutData of workouts) {
-      await processGarminWorkoutDefinition(userId, workoutData);
-      processedCount++; // Increment for each workout definition processed
+    for (const workout of workouts as Record<string, unknown>[]) {
+      await processGarminWorkoutDefinition(userId, workout);
+      processedCount++;
     }
   }
   return { processedEntries: processedCount };
@@ -792,7 +792,7 @@ async function processGarminSimpleActivity(
 async function processGarminSleepData(
   userId: string,
   actingUserId: string,
-  sleepDataArray: any[],
+  sleepDataArray: Record<string, unknown>[],
   startDate: string,
   endDate: string
 ) {
@@ -973,8 +973,7 @@ async function syncGarminHydration(
 }
 
 async function syncGarminData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
+  userId: string,
   syncType = 'manual',
   customStartDate: string | null = null,
   customEndDate: string | null = null
@@ -1010,7 +1009,7 @@ async function syncGarminData(
     'info',
     `[garminService] Starting Garmin sync (${syncType}) for user ${userId} from ${startDate} to ${endDate}.`
   );
-  const results: any = {
+  const results: Record<string, unknown> = {
     health: null,
     activities: null,
   };
@@ -1029,20 +1028,24 @@ async function syncGarminData(
     const processedGarminHealthData = await processGarminHealthAndWellnessData(
       userId,
       userId,
-      healthWellnessData.data,
+      healthWellnessData.data as GarminHealthData,
       startDate,
       endDate
     );
     // 3. Map and Process other Health Metrics (Steps, Weight, etc.)
     const processedHealthData = [];
-    for (const metric in healthWellnessData.data) {
+    for (const metric in healthWellnessData.data as Record<string, unknown>) {
       if (metric === 'stress') continue; // Already processed
-      const dailyEntries = healthWellnessData.data[metric];
+      const dailyEntries = (healthWellnessData.data as Record<string, unknown>)[
+        metric
+      ];
       if (Array.isArray(dailyEntries)) {
-        for (const entry of dailyEntries) {
+        for (const entry of dailyEntries as Record<string, unknown>[]) {
           const calendarDateRaw = entry.date;
           if (!calendarDateRaw) continue;
-          const calendarDate = moment(calendarDateRaw).format('YYYY-MM-DD');
+          const calendarDate = moment(calendarDateRaw as string).format(
+            'YYYY-MM-DD'
+          );
           for (const key in entry) {
             if (key === 'date') continue;
             // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
