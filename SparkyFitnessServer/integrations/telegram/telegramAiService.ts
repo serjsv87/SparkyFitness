@@ -5,7 +5,12 @@ import * as goalRepository from '../../models/goalRepository.js';
 import * as foodEntry from '../../models/foodEntry.js';
 import * as exerciseEntry from '../../models/exerciseEntry.js';
 import * as measurementRepository from '../../models/measurementRepository.js';
-import { todayInZone, addDays, instantToDay } from '@workspace/shared';
+import {
+  todayInZone,
+  addDays,
+  instantToDay,
+  instantHourMinute,
+} from '@workspace/shared';
 
 import * as bmrService from '../../services/bmrService.js';
 import { loadUserTimezone } from '../../utils/timezoneLoader.js';
@@ -18,10 +23,20 @@ export class TelegramAiService {
     extraContext: string = '',
     userPlan: string = ''
   ): string {
-    const today = todayInZone(user.timezone || 'UTC');
+    const tz = user.timezone || 'UTC';
+    const today = todayInZone(tz);
+    const now = new Date();
+    const [hour, minute] = instantHourMinute(now, tz);
+    const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    let timeOfDay: string;
+    if (hour >= 5 && hour < 12) timeOfDay = 'morning (ранок)';
+    else if (hour >= 12 && hour < 17) timeOfDay = 'afternoon (обід/день)';
+    else if (hour >= 17 && hour < 22) timeOfDay = 'evening (вечір)';
+    else timeOfDay = 'night (ніч)';
     return `
 SYSTEM CONTEXT FOR SPARKY FITNESS AI (TELEGRAM):
 - Current Date: ${today}
+- Current Time: ${timeStr} (${tz}) — ${timeOfDay}
 - Active User: ${user.name} (ID: ${user.id})
 - Preferred Language: ${user.language || 'en'}
 
@@ -146,23 +161,49 @@ ${extraContext}
         context += `- Macronutrient Targets: ${goal.protein}g P, ${goal.carbs}g C, ${goal.fat}g F\n`;
 
       if (recentFoods.length > 0) {
-        context += `\nFOOD HISTORY (LAST 7 DAYS):\n`;
+        context += `\nFOOD HISTORY (LAST 7 DAYS, grouped by date):\n`;
+        const foodByDate: Record<string, any[]> = {};
         recentFoods.forEach((f: any) => {
           const date = f.entry_date
             ? instantToDay(f.entry_date, tz)
             : 'Unknown';
-          context += `- ${date} [${f.meal_type || 'snack'}] ${f.food_name || f.name}: ${f.calories} kcal\n`;
+          if (!foodByDate[date]) foodByDate[date] = [];
+          foodByDate[date].push(f);
         });
+        Object.keys(foodByDate)
+          .sort()
+          .forEach((date) => {
+            const dayLabel = date === today ? `${date} (today)` : date;
+            context += `\n  📅 ${dayLabel}:\n`;
+            let dayTotal = 0;
+            foodByDate[date].forEach((f: any) => {
+              const kcal = Number(f.calories || 0);
+              dayTotal += kcal;
+              context += `    - [${f.meal_type || 'snack'}] ${f.food_name || f.name}: ${kcal} kcal\n`;
+            });
+            context += `    → Day total: ${Math.round(dayTotal)} kcal\n`;
+          });
       }
 
       if (recentExercises.length > 0) {
-        context += `\nEXERCISE HISTORY (LAST 7 DAYS):\n`;
+        context += `\nEXERCISE HISTORY (LAST 7 DAYS, grouped by date):\n`;
+        const exByDate: Record<string, any[]> = {};
         recentExercises.forEach((e: any) => {
           const date = e.entry_date
             ? instantToDay(e.entry_date, tz)
             : 'Unknown';
-          context += `- ${date} ${e.exercise_name || e.name}: ${e.duration_minutes}m, ${e.calories_burned} kcal\n`;
+          if (!exByDate[date]) exByDate[date] = [];
+          exByDate[date].push(e);
         });
+        Object.keys(exByDate)
+          .sort()
+          .forEach((date) => {
+            const dayLabel = date === today ? `${date} (today)` : date;
+            context += `\n  📅 ${dayLabel}:\n`;
+            exByDate[date].forEach((e: any) => {
+              context += `    - ${e.exercise_name || e.name}: ${e.duration_minutes}min, ${e.calories_burned} kcal burned\n`;
+            });
+          });
       }
 
       return context;

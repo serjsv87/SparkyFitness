@@ -546,10 +546,18 @@ class TelegramBotService {
       let extraContext = '';
 
       const processAiTurn = async (forceDataRequest: string | null = null) => {
-        let historyContext = chatHistory.map((h: any) => ({
-          role: h.message_type === 'user' ? 'user' : 'assistant',
-          content: h.content,
-        }));
+        let historyContext = chatHistory.map((h: any) => {
+          const ts = h.created_at
+            ? new Date(h.created_at).toLocaleString('uk-UA', {
+                timeZone: (user as any).timezone || 'UTC',
+                hour12: false,
+              })
+            : '';
+          return {
+            role: h.message_type === 'user' ? 'user' : 'assistant',
+            content: ts ? `[${ts}] ${h.content}` : h.content,
+          };
+        });
 
         const contextBlock = TelegramAiService.buildContextBlock(
           user,
@@ -566,6 +574,16 @@ class TelegramBotService {
             content: forceDataRequest ? forceDataRequest : contentParts,
           },
         ];
+        log(
+          'debug',
+          `[TELEGRAM AI] Sending context to AI for user ${user.id}:\n` +
+            `=== SYSTEM CONTEXT ===\n${contextBlock}\n` +
+            `=== HISTORY (${historyContext.length} messages) ===\n` +
+            historyContext
+              .map((m: any, i: number) => `[${i + 1}] ${m.role}: ${m.content}`)
+              .join('\n') +
+            `\n=== CURRENT USER MESSAGE ===\n${forceDataRequest ? forceDataRequest : JSON.stringify(contentParts)}`
+        );
 
         const response = await chatService.processChatMessage(
           fullMessages,
@@ -699,10 +717,18 @@ class TelegramBotService {
         extraContext
       );
 
-      const historyContext = chatHistory.map((h: any) => ({
-        role: h.message_type === 'user' ? 'user' : 'assistant',
-        content: h.content,
-      }));
+      const historyContext = chatHistory.map((h: any) => {
+        const ts = h.created_at
+          ? new Date(h.created_at).toLocaleString('uk-UA', {
+              timeZone: (user as any).timezone || 'UTC',
+              hour12: false,
+            })
+          : '';
+        return {
+          role: h.message_type === 'user' ? 'user' : 'assistant',
+          content: ts ? `[${ts}] ${h.content}` : h.content,
+        };
+      });
 
       const fullMessages = [
         { role: 'system', content: contextBlock },

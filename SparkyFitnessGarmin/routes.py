@@ -71,7 +71,7 @@ async def garmin_login(request_data: GarminLoginRequest):
             )
             return {"status": "needs_mfa", "client_state": mfa_id}
         else:
-            tokens = json.loads(garmin.client.dumps())
+            tokens = json.loads(garmin.garth.dumps())
             logger.info(
                 f"Successfully obtained Garmin tokens for user {request_data.user_id}."
             )
@@ -87,7 +87,7 @@ async def garmin_login(request_data: GarminLoginRequest):
         raise HTTPException(status_code=429, detail=f"Garmin rate limit hit: {e}")
     except GarminConnectConnectionError as e:
         logger.error(f"Garmin connection error: {e}")
-        raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
+        logger.exception(e); raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
     except Exception as e:
         logger.error(f"Unexpected error during Garmin login: {e}")
         raise HTTPException(
@@ -119,7 +119,7 @@ async def garmin_resume_login(request: Request):
 
         garmin.login()
 
-        tokens = json.loads(garmin.client.dumps())
+        tokens = json.loads(garmin.garth.dumps())
 
         logger.info(f"Successfully resumed Garmin login for user {user_id}.")
         return {"status": "success", "tokens": tokens}
@@ -173,7 +173,7 @@ async def get_health_and_wellness(request_data: HealthAndWellnessRequest):
             )
 
         garmin = Garmin(is_cn=IS_CN)
-        garmin.client.loads(tokens_string)
+        garmin.garth.loads(tokens_string)
 
         # Initialize health_data as a dictionary where each key is a metric type and the value is a list of daily entries
         health_data = {metric: [] for metric in ALL_HEALTH_METRICS}
@@ -1397,7 +1397,7 @@ async def get_health_and_wellness(request_data: HealthAndWellnessRequest):
             "start_date": start_date,
             "end_date": end_date,
             "data": final_health_data,
-            "new_tokens": json.loads(garmin.client.dumps()),
+            "new_tokens": json.loads(garmin.garth.dumps()),
         }
 
     except GarminConnectAuthenticationError as e:
@@ -1407,8 +1407,9 @@ async def get_health_and_wellness(request_data: HealthAndWellnessRequest):
     except GarminConnectTooManyRequestsError as e:
         raise HTTPException(status_code=429, detail=f"Garmin rate limit hit: {e}")
     except GarminConnectConnectionError as e:
-        raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
+        logger.exception(e); raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
     except Exception as e:
+        logger.exception(e)
         raise HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {e}"
         )
@@ -1449,7 +1450,7 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
             )
 
         garmin = Garmin(is_cn=IS_CN)
-        garmin.client.loads(tokens_string)
+        garmin.garth.loads(tokens_string)
 
         logger.info(
             f"Fetching activities for user {user_id} from {start_date} to {end_date} with activity type {activity_type}"
@@ -1595,7 +1596,7 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
             "end_date": end_date,
             "activities": cleaned_activities,
             "workouts": cleaned_workouts,
-            "new_tokens": json.loads(garmin.client.dumps()),
+            "new_tokens": json.loads(garmin.garth.dumps()),
         }
 
     except GarminConnectAuthenticationError as e:
@@ -1605,8 +1606,9 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
     except GarminConnectTooManyRequestsError as e:
         raise HTTPException(status_code=429, detail=f"Garmin rate limit hit: {e}")
     except GarminConnectConnectionError as e:
-        raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
+        logger.exception(e); raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
     except Exception as e:
+        logger.exception(e)
         raise HTTPException(
             status_code=500, detail=f"An unexpected error occurred: {e}"
         )
@@ -1619,7 +1621,7 @@ async def get_hydration(user_id: str, tokens: str, date: str):
     """
     try:
         garmin = Garmin(is_cn=IS_CN)
-        garmin.client.loads(tokens)
+        garmin.garth.loads(tokens)
         hydration_data = garmin.get_hydration_data(date)
         logger.info(f"Successfully retrieved hydration data for user {user_id} on {date}.")
         return hydration_data
@@ -1635,7 +1637,7 @@ async def log_hydration_data(request_data: HydrationLogRequest):
     """
     try:
         garmin = Garmin(is_cn=IS_CN)
-        garmin.client.loads(request_data.tokens)
+        garmin.garth.loads(request_data.tokens)
 
         # Use provided profile ID or fetch it
         user_profile_id = request_data.user_profile_id
@@ -1666,5 +1668,5 @@ async def log_hydration_data(request_data: HydrationLogRequest):
         )
         return response.json()
     except Exception as e:
-        logger.error(f"Error logging hydration data: {e}")
+        logger.exception(f"Error logging hydration data: {e}")
         raise HTTPException(status_code=500, detail=str(e))

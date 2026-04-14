@@ -266,7 +266,7 @@ export async function getChatHistoryByUserId(userId: string): Promise<any[]> {
   const client = await getClient(userId);
   try {
     const result = await client.query(
-      'SELECT content, message_type, metadata, created_at FROM sparky_chat_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10',
+      'SELECT content, message_type, metadata, created_at FROM sparky_chat_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20',
       [userId]
     );
     return result.rows.reverse();
