@@ -8,6 +8,113 @@ import { todayInZone } from '@workspace/shared';
 
 const { Agent } = undici;
 
+interface AiUsageStats {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimated: boolean;
+}
+
+function extractAiUsageStats(
+  serviceType: string,
+  data: any
+): AiUsageStats | null {
+  const toNumber = (value: unknown): number | null => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  if (
+    serviceType === 'openai' ||
+    serviceType === 'openai_compatible' ||
+    serviceType === 'mistral' ||
+    serviceType === 'groq' ||
+    serviceType === 'openrouter' ||
+    serviceType === 'custom'
+  ) {
+    const inputTokens = toNumber((data as any).usage?.prompt_tokens);
+    const outputTokens = toNumber((data as any).usage?.completion_tokens);
+    const totalTokens = toNumber((data as any).usage?.total_tokens);
+    if (inputTokens !== null || outputTokens !== null || totalTokens !== null) {
+      const input = inputTokens ?? 0;
+      const output = outputTokens ?? 0;
+      return {
+        inputTokens: input,
+        outputTokens: output,
+        totalTokens: totalTokens ?? input + output,
+        estimated: false,
+      };
+    }
+  }
+
+  if (serviceType === 'anthropic') {
+    const inputTokens = toNumber((data as any).usage?.input_tokens);
+    const outputTokens = toNumber((data as any).usage?.output_tokens);
+    if (inputTokens !== null || outputTokens !== null) {
+      const input = inputTokens ?? 0;
+      const output = outputTokens ?? 0;
+      return {
+        inputTokens: input,
+        outputTokens: output,
+        totalTokens: input + output,
+        estimated: false,
+      };
+    }
+  }
+
+  if (serviceType === 'google') {
+    const inputTokens = toNumber((data as any).usageMetadata?.promptTokenCount);
+    const outputTokens = toNumber(
+      (data as any).usageMetadata?.candidatesTokenCount
+    );
+    const totalTokens = toNumber((data as any).usageMetadata?.totalTokenCount);
+    if (inputTokens !== null || outputTokens !== null || totalTokens !== null) {
+      const input = inputTokens ?? 0;
+      const output = outputTokens ?? 0;
+      return {
+        inputTokens: input,
+        outputTokens: output,
+        totalTokens: totalTokens ?? input + output,
+        estimated: false,
+      };
+    }
+  }
+
+  if (serviceType === 'ollama') {
+    const inputTokens = toNumber((data as any).prompt_eval_count);
+    const outputTokens = toNumber((data as any).eval_count);
+    if (inputTokens !== null || outputTokens !== null) {
+      const input = inputTokens ?? 0;
+      const output = outputTokens ?? 0;
+      return {
+        inputTokens: input,
+        outputTokens: output,
+        totalTokens: input + output,
+        estimated: false,
+      };
+    }
+  }
+
+  return null;
+}
+
+function estimateAiUsageStats(messages: any[], content: string): AiUsageStats {
+  const promptChars = JSON.stringify(messages ?? []).length;
+  const outputChars = (content || '').length;
+  const inputTokens = Math.max(1, Math.round(promptChars / 4));
+  const outputTokens = Math.max(1, Math.round(outputChars / 4));
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    estimated: true,
+  };
+}
+
 export async function handleAiServiceSettings(
   action: any,
   serviceData: any,
@@ -696,7 +803,15 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
     }
 
     const data = await response.json();
+    let usage = extractAiUsageStats(aiService.service_type, data);
     let content = '';
+
+    if (usage) {
+      log(
+        'info',
+        `[AI USAGE] ${aiService.service_type}: input=${usage.inputTokens}, output=${usage.outputTokens}, total=${usage.totalTokens}`
+      );
+    }
 
     switch (aiService.service_type) {
       case 'openai':
@@ -719,6 +834,14 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
       case 'ollama':
         content = data.message?.content || 'No response from AI service';
         break;
+    }
+
+    if (!usage) {
+      usage = estimateAiUsageStats(messagesForAI, content);
+      log(
+        'info',
+        `[AI USAGE] ${aiService.service_type}: input=${usage.inputTokens}, output=${usage.outputTokens}, total=${usage.totalTokens} (estimated)`
+      );
     }
 
     log('info', `[AI RAW RESPONSE] ${content}`);
@@ -769,6 +892,7 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
       intent,
       data: intentData,
       entryDate,
+      usage,
     };
   } catch (error: any) {
     log(
@@ -932,7 +1056,15 @@ export async function processFoodOptionsRequest(
       throw new Error(`AI service API call error: ${response.status}`);
 
     const data = await response.json();
+    let usage = extractAiUsageStats(aiService.service_type, data);
     let content = '';
+
+    if (usage) {
+      log(
+        'info',
+        `[AI USAGE] ${aiService.service_type}: input=${usage.inputTokens}, output=${usage.outputTokens}, total=${usage.totalTokens}`
+      );
+    }
     switch (aiService.service_type) {
       case 'openai':
       case 'openai_compatible':
@@ -951,6 +1083,14 @@ export async function processFoodOptionsRequest(
       case 'ollama':
         content = data.message?.content || '';
         break;
+    }
+
+    if (!usage) {
+      usage = estimateAiUsageStats(messages, content);
+      log(
+        'info',
+        `[AI USAGE] ${aiService.service_type}: input=${usage.inputTokens}, output=${usage.outputTokens}, total=${usage.totalTokens} (estimated)`
+      );
     }
 
     return { content };

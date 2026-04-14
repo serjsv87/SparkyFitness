@@ -33,38 +33,126 @@ export class TelegramAiService {
     else if (hour >= 12 && hour < 17) timeOfDay = 'afternoon (обід/день)';
     else if (hour >= 17 && hour < 22) timeOfDay = 'evening (вечір)';
     else timeOfDay = 'night (ніч)';
-    return `
-SYSTEM CONTEXT FOR SPARKY FITNESS AI (TELEGRAM):
-- Current Date: ${today}
-- Current Time: ${timeStr} (${tz}) — ${timeOfDay}
-- Active User: ${user.name} (ID: ${user.id})
-- Preferred Language: ${user.language || 'en'}
 
-USER'S PHYSICAL PROFILE & NUTRITION GOALS:
-${nutritionContext || 'No profile or goal data available.'}
+    const sections: string[] = [
+      `SYSTEM CONTEXT FOR SPARKY FITNESS AI (TELEGRAM):\n- Current Date: ${today}\n- Current Time: ${timeStr} (${tz}) — ${timeOfDay}\n- Active User: ${user.name} (ID: ${user.id})\n- Preferred Language: ${user.language || 'en'}`,
+    ];
 
-USER'S RECENT EXERCISE HISTORY (Last 7 Days):
-${exerciseSummary || 'No recent exercises found.'}
+    if (nutritionContext && nutritionContext.trim()) {
+      sections.push(
+        `USER'S PHYSICAL PROFILE & NUTRITION GOALS:\n${nutritionContext.trim()}`
+      );
+    }
 
-BEHAVIORAL INSTRUCTIONS:
+    if (exerciseSummary && exerciseSummary.trim()) {
+      sections.push(
+        `USER'S RECENT EXERCISE HISTORY (Last 7 Days):\n${exerciseSummary.trim()}`
+      );
+    }
+
+    if (userPlan && userPlan.trim()) {
+      sections.push(`[USER NUTRITION PLAN]\n${userPlan.trim()}`);
+    }
+
+    if (extraContext && extraContext.trim()) {
+      sections.push(extraContext.trim());
+    }
+
+    sections.push(`BEHAVIORAL INSTRUCTIONS:
 1. You are Sparky, a professional and motivating fitness coach.
 2. You are communicating via Telegram. Keep your responses VERY CONCISE, friendly, and use Markdown (bold, lists).
 3. When the user asks about "workouts", "sessions", or "exercises" (e.g., "последние занятия"), refer to the Exercise History provided above.
 4. For every message, you MUST identify the intent (log_food, log_exercise, log_measurement, chat, etc.) and return it in the JSON format as defined in your main system prompt.
-5. If you are just chatting or answering a question without a specific log intent, use the "chat" or "ask_question" intent and put your response in the "response" field.
+5. If you are just chatting or answering a question without a specific log intent, use the "chat" or "ask_question" intent and put your response in the "response" field.`);
 
-[USER NUTRITION PLAN]
-${userPlan || 'No specific nutrition plan rules provided yet.'}
+    return sections.join('\n\n');
+  }
 
-${extraContext}
-`;
+  private static formatFoodHistory(
+    recentFoods: any[],
+    tz: string,
+    today: string
+  ): string {
+    if (!recentFoods || recentFoods.length === 0) {
+      return '';
+    }
+
+    const yesterday = addDays(today, -1);
+    const foodsByDate: Record<string, any[]> = {};
+    recentFoods.forEach((food: any) => {
+      const date = food.entry_date
+        ? instantToDay(food.entry_date, tz)
+        : 'Unknown';
+      if (!foodsByDate[date]) foodsByDate[date] = [];
+      foodsByDate[date].push(food);
+    });
+
+    const mealLabels: Record<string, string> = {
+      breakfast: 'Сніданок',
+      lunch: 'Обід',
+      dinner: 'Вечеря',
+      snacks: 'Перекуси',
+    };
+
+    const mealOrder = ['breakfast', 'lunch', 'dinner', 'snacks'];
+    const sortedDates = Object.keys(foodsByDate).sort((a, b) =>
+      b.localeCompare(a)
+    );
+    const lines: string[] = [];
+
+    for (const date of sortedDates) {
+      const dayFoods = foodsByDate[date];
+      const dayTotal = dayFoods.reduce(
+        (sum, food) => sum + Number(food.calories || 0),
+        0
+      );
+      const detailed = date === today || date === yesterday;
+      const dayLabel =
+        date === today
+          ? `${date} (today)`
+          : date === yesterday
+            ? `${date} (yesterday)`
+            : date;
+
+      if (!detailed) {
+        lines.push(`  📅 ${dayLabel}: ${Math.round(dayTotal)} kcal`);
+        continue;
+      }
+
+      lines.push(`  📅 ${dayLabel}:`);
+      const grouped = new Map<string, any[]>();
+      for (const food of dayFoods) {
+        const mealType = (food.meal_type || 'snacks').toLowerCase();
+        if (!grouped.has(mealType)) grouped.set(mealType, []);
+        grouped.get(mealType)!.push(food);
+      }
+
+      for (const mealType of mealOrder) {
+        const items = grouped.get(mealType);
+        if (!items || items.length === 0) continue;
+        const mealNames = items
+          .map((item) => item.food_name || item.name || 'Food')
+          .join(', ');
+        const mealTotal = items.reduce(
+          (sum, item) => sum + Number(item.calories || 0),
+          0
+        );
+        lines.push(
+          `    - ${mealLabels[mealType] || mealType}: ${mealNames} (${Math.round(mealTotal)} kcal)`
+        );
+      }
+
+      lines.push(`    → Day total: ${Math.round(dayTotal)} kcal`);
+    }
+
+    return lines.join('\n');
   }
 
   static async getUserNutritionContext(userId: string): Promise<string> {
     try {
       const tz = await loadUserTimezone(userId);
       const today = todayInZone(tz);
-      const startDate = addDays(today, -7);
+      const startDate = addDays(today, -6);
 
       const [
         profile,
@@ -73,7 +161,6 @@ ${extraContext}
         todayFoods,
         todayExercises,
         recentFoods,
-        recentExercises,
         latestMeasurement,
       ] = await Promise.all([
         userRepository.getUserProfile(userId),
@@ -82,7 +169,6 @@ ${extraContext}
         foodEntry.getFoodEntriesByDate(userId, today),
         exerciseEntry.getExerciseEntriesByDate(userId, today),
         foodEntry.getFoodEntriesByDateRange(userId, startDate, today),
-        exerciseEntry.getExerciseEntriesByDateRange(userId, startDate, today),
         measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate(
           userId,
           today
@@ -157,53 +243,19 @@ ${extraContext}
       context += `- Consumed Today: ${Math.round(caloriesConsumed)} kcal (${Math.round(proteinConsumed)}g P, ${Math.round(carbsConsumed)}g C, ${Math.round(fatConsumed)}g F)\n`;
       context += `- REMAINING CALORIES: ${Math.round(remaining)} kcal (Goal + Burned - Consumed)\n`;
 
-      if (goal?.protein)
+      if (goal?.protein) {
         context += `- Macronutrient Targets: ${goal.protein}g P, ${goal.carbs}g C, ${goal.fat}g F\n`;
-
-      if (recentFoods.length > 0) {
-        context += `\nFOOD HISTORY (LAST 7 DAYS, grouped by date):\n`;
-        const foodByDate: Record<string, any[]> = {};
-        recentFoods.forEach((f: any) => {
-          const date = f.entry_date
-            ? instantToDay(f.entry_date, tz)
-            : 'Unknown';
-          if (!foodByDate[date]) foodByDate[date] = [];
-          foodByDate[date].push(f);
-        });
-        Object.keys(foodByDate)
-          .sort()
-          .forEach((date) => {
-            const dayLabel = date === today ? `${date} (today)` : date;
-            context += `\n  📅 ${dayLabel}:\n`;
-            let dayTotal = 0;
-            foodByDate[date].forEach((f: any) => {
-              const kcal = Number(f.calories || 0);
-              dayTotal += kcal;
-              context += `    - [${f.meal_type || 'snack'}] ${f.food_name || f.name}: ${kcal} kcal\n`;
-            });
-            context += `    → Day total: ${Math.round(dayTotal)} kcal\n`;
-          });
       }
 
-      if (recentExercises.length > 0) {
-        context += `\nEXERCISE HISTORY (LAST 7 DAYS, grouped by date):\n`;
-        const exByDate: Record<string, any[]> = {};
-        recentExercises.forEach((e: any) => {
-          const date = e.entry_date
-            ? instantToDay(e.entry_date, tz)
-            : 'Unknown';
-          if (!exByDate[date]) exByDate[date] = [];
-          exByDate[date].push(e);
-        });
-        Object.keys(exByDate)
-          .sort()
-          .forEach((date) => {
-            const dayLabel = date === today ? `${date} (today)` : date;
-            context += `\n  📅 ${dayLabel}:\n`;
-            exByDate[date].forEach((e: any) => {
-              context += `    - ${e.exercise_name || e.name}: ${e.duration_minutes}min, ${e.calories_burned} kcal burned\n`;
-            });
-          });
+      if (recentFoods.length > 0) {
+        const foodHistory = TelegramAiService.formatFoodHistory(
+          recentFoods,
+          tz,
+          today
+        );
+        if (foodHistory) {
+          context += `\nFOOD HISTORY (LAST 7 DAYS, compressed):\n${foodHistory}`;
+        }
       }
 
       return context;

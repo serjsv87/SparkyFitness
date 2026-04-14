@@ -511,6 +511,119 @@ class TelegramBotService {
     }
   }
 
+  private classifyContextMode(
+    msg: TelegramBot.Message
+  ): 'chat' | 'food' | 'exercise' | 'analysis' {
+    const text = `${msg.text || ''} ${msg.caption || ''}`.toLowerCase();
+    const hasImage = Array.isArray(msg.photo) && msg.photo.length > 0;
+    const hasExerciseMedia = Boolean(
+      msg.voice || msg.audio || msg.video || msg.video_note || msg.document
+    );
+
+    const analysisKeywords = [
+      'analyze',
+      'analysis',
+      'recommend',
+      'recommendation',
+      'should i',
+      'deficit',
+      'surplus',
+      'plan',
+      'why',
+      'compare',
+      'порекоменду',
+      'проаналіз',
+      'аналіз',
+      'рекоменд',
+      'чому',
+      'порівняй',
+    ];
+
+    const foodKeywords = [
+      'food',
+      'meal',
+      'eat',
+      'ate',
+      'breakfast',
+      'lunch',
+      'dinner',
+      'snack',
+      'calorie',
+      'protein',
+      'carb',
+      'fat',
+      'що я поїв',
+      'що я їв',
+      'запиши',
+      'каву',
+      'снідан',
+      'обід',
+      'вечер',
+      'перекус',
+      'вода',
+      'water',
+      'drink',
+    ];
+
+    const exerciseKeywords = [
+      'workout',
+      'exercise',
+      'training',
+      'run',
+      'bike',
+      'cycle',
+      'swim',
+      'walk',
+      'hike',
+      'session',
+      'burn',
+      'burned',
+      'active calories',
+      'спал',
+      'спалив',
+      'тренир',
+      'тренув',
+      'вправ',
+      'кардио',
+      'біг',
+      'йога',
+      'зал',
+    ];
+
+    const hasFoodIntent =
+      foodKeywords.some((keyword) => text.includes(keyword)) || hasImage;
+    const hasExerciseIntent =
+      exerciseKeywords.some((keyword) => text.includes(keyword)) ||
+      hasExerciseMedia;
+
+    if (analysisKeywords.some((keyword) => text.includes(keyword))) {
+      return 'analysis';
+    }
+    if (hasFoodIntent && hasExerciseIntent) {
+      return 'analysis';
+    }
+    if (hasExerciseIntent) {
+      return 'exercise';
+    }
+    if (hasFoodIntent) {
+      return 'food';
+    }
+    return 'chat';
+  }
+
+  private formatUsageFooter(
+    usage?: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      estimated?: boolean;
+    } | null
+  ): string {
+    if (!usage) return '';
+    const suffix = usage.estimated ? ' (estimated)' : '';
+    return `\n\n<code>AI cost: in ${usage.inputTokens}, out ${usage.outputTokens}, total ${usage.totalTokens} tokens${suffix}</code>`;
+  }
+
   async processMessage(
     chatId: number,
     user: TelegramUser,
@@ -536,12 +649,28 @@ class TelegramBotService {
         ) as unknown as void;
       }
 
-      const chatHistory = await chatRepository.getChatHistoryByUserId(user.id);
-      let exerciseSummary = await this.getExerciseSummary(user);
-      let nutritionContext = await TelegramAiService.getUserNutritionContext(
-        user.id
-      );
-      let extraContext = '';
+      const contextMode = this.classifyContextMode(msg);
+      const historyLimit = contextMode === 'chat' ? 3 : 7;
+      const chatHistory = (
+        await chatRepository.getChatHistoryByUserId(user.id)
+      ).slice(-historyLimit);
+      const includeFoodContext =
+        contextMode === 'food' || contextMode === 'analysis';
+      const includeExerciseContext =
+        contextMode === 'exercise' || contextMode === 'analysis';
+      const includePlanContext =
+        includeFoodContext || contextMode === 'analysis';
+
+      const [exerciseSummary, nutritionContext] = await Promise.all([
+        includeExerciseContext
+          ? this.getExerciseSummary(user)
+          : Promise.resolve(''),
+        includeFoodContext
+          ? TelegramAiService.getUserNutritionContext(user.id)
+          : Promise.resolve(''),
+      ]);
+      const extraContext = '';
+      const userPlan = includePlanContext ? aiService.system_prompt || '' : '';
 
       const processAiTurn = async (forceDataRequest: string | null = null) => {
         let historyContext = chatHistory.map((h: any) => {
@@ -562,7 +691,7 @@ class TelegramBotService {
           exerciseSummary,
           nutritionContext,
           extraContext,
-          aiService.system_prompt
+          userPlan
         );
         const fullMessages = [
           { role: 'system', content: contextBlock },
@@ -630,14 +759,22 @@ class TelegramBotService {
         }
         // Telegram HTML mode doesn't support <br> — replace with newlines
         const replyText = rawReplyText.replace(/<br\s*\/?>/gi, '\n');
+        const replyWithUsage = `${replyText}${this.formatUsageFooter(response.usage)}`;
         await chatRepository.saveChatMessage(
           user.id,
           msg.text || '[Multi-modal]',
           'user'
         );
-        await chatRepository.saveChatMessage(user.id, replyText, 'assistant');
+        await chatRepository.saveChatMessage(
+          user.id,
+          replyText,
+          'assistant',
+          response.usage ? { usage: response.usage } : null
+        );
 
-        await this.bot!.sendMessage(chatId, replyText, { parse_mode: 'HTML' });
+        await this.bot!.sendMessage(chatId, replyWithUsage, {
+          parse_mode: 'HTML',
+        });
 
         if (response.intent && response.intent !== 'request_data') {
           await this.tryExecuteIntent(chatId, user, response);
@@ -672,11 +809,7 @@ class TelegramBotService {
       const tz = await loadUserTimezone(user.id);
       const today = todayInZone(tz);
       const endDate = today;
-      const startDate = new Date(
-        new Date().setDate(new Date().getDate() - days)
-      )
-        .toISOString()
-        .split('T')[0];
+      const startDate = addDays(today, -(Math.max(days, 1) - 1));
 
       if (type.includes('exercise')) {
         const exercises = await exerciseEntry.getExerciseEntriesByDateRange(
@@ -931,9 +1064,7 @@ class TelegramBotService {
     try {
       const tz = await loadUserTimezone(user.id);
       const today = todayInZone(tz);
-      const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
+      const startDate = addDays(today, -6);
 
       let exercises = await exerciseEntry.getExerciseEntriesByDateRange(
         user.id,
@@ -1169,7 +1300,7 @@ class TelegramBotService {
       const userId = user.id;
       const tz = user?.timezone || 'UTC';
       const today = todayInZone(tz);
-      const startDate = addDays(today, -7);
+      const startDate = addDays(today, -6);
       const endDate = today;
       const exercises = await exerciseEntry.getExerciseEntriesByDateRange(
         userId,
