@@ -668,7 +668,9 @@ class TelegramBotService {
       const contextMode = this.classifyContextMode(msg);
       const historyLimit = contextMode === 'chat' ? 3 : 7;
       const chatHistory = (
-        (await chatRepository.getChatHistoryByUserId(user.id)) as any[]
+        (await chatRepository.getChatHistoryByUserId(
+          user.id
+        )) as unknown as Record<string, unknown>[]
       ).slice(-historyLimit);
       const includeFoodContext =
         contextMode === 'food' || contextMode === 'analysis';
@@ -688,25 +690,27 @@ class TelegramBotService {
       const userPlan = includePlanContext ? aiService.system_prompt || '' : '';
 
       const processAiTurn = async (forceDataRequest: string | null = null) => {
-        const historyContext = chatHistory.map((h: unknown) => {
-          const item = h as {
-            created_at?: string;
-            message_type: string;
-            content: string;
-          };
-          const ts = item.created_at
-            ? new Date(item.created_at).toLocaleString('uk-UA', {
-                timeZone: (user as { timezone?: string }).timezone || 'UTC',
-                hour12: false,
-              })
-            : '';
-          return {
-            role: (item.message_type === 'user' ? 'user' : 'assistant') as
-              | 'user'
-              | 'assistant',
-            content: ts ? `[${ts}] ${item.content}` : item.content,
-          };
-        });
+        const historyContext = (chatHistory as Record<string, unknown>[]).map(
+          (h: Record<string, unknown>) => {
+            const item = h as {
+              created_at?: string;
+              message_type: string;
+              content: string;
+            };
+            const ts = item.created_at
+              ? new Date(item.created_at).toLocaleString('uk-UA', {
+                  timeZone: (user as { timezone?: string }).timezone || 'UTC',
+                  hour12: false,
+                })
+              : '';
+            return {
+              role: (item.message_type === 'user' ? 'user' : 'assistant') as
+                | 'user'
+                | 'assistant',
+              content: ts ? `[${ts}] ${item.content}` : item.content,
+            };
+          }
+        );
 
         const contextBlock = TelegramAiService.buildContextBlock(
           user,
@@ -744,7 +748,6 @@ class TelegramBotService {
         );
 
         if (response && response.intent === 'request_data') {
-          // Відправляємо користувачеві проміжне повідомлення ("Один момент...")
           const waitMsg = response.text || response.content;
           if (waitMsg && waitMsg.trim() !== '') {
             await this.bot!.sendMessage(chatId, waitMsg, {
@@ -759,32 +762,46 @@ class TelegramBotService {
           return this.handleDataRequest(
             chatId,
             user,
-            (response as any).data,
+            (response.data || {}) as Record<string, unknown>,
             msg.text || '',
             aiService?.id || '',
-            chatHistory as any
+            chatHistory as Record<string, unknown>[]
           );
         }
         return response;
       };
 
-      const response = await processAiTurn();
+      const resp = await processAiTurn();
+      const response = resp as {
+        text?: string;
+        content?: string;
+        intent?: string;
+        data?: unknown;
+        usage?: {
+          inputTokens: number;
+          outputTokens: number;
+          totalTokens: number;
+        };
+      };
 
-      if (response && ((response as any).text || (response as any).content)) {
-        let rawReplyText = (response as any).text || (response as any).content;
-        // Guard: if AI returned raw JSON, extract the response field
+      if (response && (response.text || response.content)) {
+        const rawReplyText =
+          (response.text as string) || (response.content as string) || '';
+        let processedReplyText = rawReplyText;
         if (rawReplyText.trimStart().startsWith('{')) {
           try {
-            const j = JSON.parse(rawReplyText);
+            const j = JSON.parse(rawReplyText) as {
+              response?: string;
+              responseText?: string;
+            };
             if (j.response || j.responseText)
-              rawReplyText = j.response || j.responseText;
+              processedReplyText = (j.response || j.responseText) as string;
           } catch {
-            /* not valid JSON, use as-is */
+            // ignore
           }
         }
-        // Telegram HTML mode doesn't support <br> — replace with newlines
-        const replyText = rawReplyText.replace(/<br\s*\/?>/gi, '\n');
-        const replyWithUsage = `${replyText}${this.formatUsageFooter((response as any).usage)}`;
+        const replyText = processedReplyText.replace(/<br\s*\/?>/gi, '\n');
+        const replyWithUsage = `${replyText}${this.formatUsageFooter(response.usage) || ''}`;
         await chatRepository.saveChatMessage(
           user.id,
           msg.text || '[Multi-modal]',
@@ -794,23 +811,24 @@ class TelegramBotService {
           user.id,
           replyText,
           'assistant',
-          (response as any).usage ? { usage: (response as any).usage } : null
+          response.usage ? { usage: response.usage } : null
         );
 
         await this.bot!.sendMessage(chatId, replyWithUsage, {
           parse_mode: 'HTML',
         });
 
-        if (
-          (response as any).intent &&
-          (response as any).intent !== 'request_data'
-        ) {
-          await this.tryExecuteIntent(chatId, user, response as any);
+        if (response.intent && response.intent !== 'request_data') {
+          await this.tryExecuteIntent(
+            chatId,
+            user,
+            response as Record<string, unknown>
+          );
         }
       }
     } catch (error: unknown) {
       log('error', '[TELEGRAM BOT] Error processing message:', error);
-      this.bot!.sendMessage(
+      await this.bot!.sendMessage(
         chatId,
         `❌ AI Error: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -852,7 +870,7 @@ class TelegramBotService {
           fetchedDataText = `No exercises found in the last ${days} days.`;
         } else {
           fetchedDataText = exercises
-            .map((ex: unknown) => {
+            .map((ex: Record<string, unknown>) => {
               const item = ex as {
                 entry_date?: string;
                 exercise_name?: string;
@@ -880,7 +898,7 @@ class TelegramBotService {
           fetchedDataText = `No food logs found in the last ${days} days.`;
         } else {
           fetchedDataText = foods
-            .map((f: unknown) => {
+            .map((f: Record<string, unknown>) => {
               const item = f as {
                 entry_date: string;
                 food_name: string;
@@ -906,7 +924,7 @@ class TelegramBotService {
         extraContext
       );
 
-      const historyContext = chatHistory.map((h: unknown) => {
+      const historyContext = chatHistory.map((h: Record<string, unknown>) => {
         const item = h as {
           created_at?: string;
           message_type: string;
@@ -927,8 +945,6 @@ class TelegramBotService {
       const fullMessages = [
         { role: 'system', content: contextBlock },
         ...historyContext,
-        // Instead of repeating the user's query, we explicitly command the AI as the user
-        // and remove any trigger words like "last 10" or "history"
         {
           role: 'user',
           content:
@@ -955,7 +971,7 @@ class TelegramBotService {
       return response;
     } catch (error: unknown) {
       log('error', '[TELEGRAM BOT] Error handling data request:', error);
-      this.bot!.sendMessage(
+      await this.bot!.sendMessage(
         chatId,
         `❌ AI Data Fetch Error: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -983,13 +999,21 @@ class TelegramBotService {
 
       if (typeof result === 'string') {
         await this.bot!.sendMessage(chatId, result, { parse_mode: 'HTML' });
-      } else if (result && (result as any).message) {
-        await this.bot!.sendMessage(chatId, (result as any).message, {
-          parse_mode: 'HTML',
-        });
-      } else if (result && (result as any).intent === 'confirm_deletion') {
+      } else if (result && (result as Record<string, unknown>).message) {
+        await this.bot!.sendMessage(
+          chatId,
+          (result as Record<string, unknown>).message as string,
+          {
+            parse_mode: 'HTML',
+          }
+        );
+      } else if (
+        result &&
+        (result as Record<string, unknown>).intent === 'confirm_deletion'
+      ) {
         const t = getTranslations(user.language);
-        const matches = (result as any).matches || [];
+        const matches = ((result as Record<string, unknown>).matches ||
+          []) as Record<string, unknown>[];
         if (matches.length === 0) return;
 
         let confirmText = `❓ <b>${t.deleteConfirm}</b>\n\n`;
@@ -997,7 +1021,7 @@ class TelegramBotService {
 
         for (const m of matches) {
           if (m.type === 'food') {
-            confirmText += `🍏 ${m.name} (${Math.round(m.calories)} kcal)\n`;
+            confirmText += `🍏 ${m.name} (${Math.round(m.calories as number)} kcal)\n`;
             buttons.push([
               {
                 text: `🗑️ ${t.deleteRecord}: ${m.name}`,
@@ -1055,7 +1079,7 @@ class TelegramBotService {
       let text = `🍴 <b>Today's Diary (${today}):</b>\n\n`;
       let totalCals = 0;
 
-      const grouped: { [key: string]: any[] } = {
+      const grouped: Record<string, Record<string, unknown>[]> = {
         breakfast: [],
         lunch: [],
         dinner: [],
@@ -1080,9 +1104,11 @@ class TelegramBotService {
       for (const [type, items] of Object.entries(grouped)) {
         if (items.length > 0) {
           text += `<b>${mealNames[type]}:</b>\n`;
-          items.forEach((i: any) => {
-            const cal = i.calories ? `${Math.round(i.calories)} ккал` : '';
-            text += ` • ${i.food_name || i.name} — ${i.quantity} ${i.unit} ${cal}\n`;
+          items.forEach((i: Record<string, unknown>) => {
+            const cal = i.calories
+              ? `${Math.round(i.calories as number)} ккал`
+              : '';
+            text += ` • ${(i.food_name as string) || (i.name as string)} — ${i.quantity} ${i.unit} ${cal}\n`;
           });
           text += '\n';
         }
@@ -1093,10 +1119,10 @@ class TelegramBotService {
       const buttons: TelegramBot.InlineKeyboardButton[][] = [];
       for (const [, items] of Object.entries(grouped)) {
         if (items.length > 0) {
-          items.forEach((i: any) => {
+          items.forEach((i: Record<string, unknown>) => {
             buttons.push([
               {
-                text: `🗑️ ${i.food_name || i.name} (${Math.round(i.calories)} kcal)`,
+                text: `🗑️ ${(i.food_name as string) || (i.name as string)} (${Math.round(i.calories as number)} kcal)`,
                 callback_data: `del_f:${i.id}`,
               },
             ]);
@@ -1158,26 +1184,21 @@ class TelegramBotService {
         return true;
       });
 
-      const uniqueExercisesMap = new Map<string, any>();
+      const uniqueExercisesMap = new Map<string, Record<string, unknown>>();
       exercises.forEach((ex: unknown) => {
-        const item = ex as {
-          entry_date?: string;
-          exercise_name?: string;
-          name?: string;
-          duration_minutes?: number;
-          distance?: number;
-          avg_heart_rate?: number;
-        };
+        const item = ex as Record<string, unknown>;
         let dateStr = today;
         if (item.entry_date) {
-          const d = new Date(item.entry_date);
+          const d = new Date(item.entry_date as string);
           if (!isNaN(d.getTime())) {
             dateStr = instantToDay(d, user.timezone || 'UTC');
           }
         }
 
-        const name = (item.exercise_name || item.name || 'Activity').trim();
-        const dur = Math.round(item.duration_minutes || 0);
+        const name = (
+          (item.exercise_name || item.name || 'Activity') as string
+        ).trim();
+        const dur = Math.round((item.duration_minutes as number) || 0);
 
         const key = `${dateStr}|${name.toLowerCase()}|${dur}`;
         const existing = uniqueExercisesMap.get(key);
@@ -1185,10 +1206,11 @@ class TelegramBotService {
         let keepCurrent = !existing;
         if (existing) {
           const existingScore =
-            (existing.distance ? 1 : 0) + (existing.avg_heart_rate ? 1 : 0);
+            ((existing.distance as number) ? 1 : 0) +
+            ((existing.avg_heart_rate as number) ? 1 : 0);
           const currentScore =
-            ((item as any).distance ? 1 : 0) +
-            ((item as any).avg_heart_rate ? 1 : 0);
+            ((item.distance as number) ? 1 : 0) +
+            ((item.avg_heart_rate as number) ? 1 : 0);
           if (currentScore > existingScore) {
             keepCurrent = true;
           }
@@ -1196,16 +1218,16 @@ class TelegramBotService {
 
         if (keepCurrent) {
           uniqueExercisesMap.set(key, {
-            ...(item as any),
+            ...item,
             entry_date_str: dateStr,
           });
         }
       });
 
       const processedExercises = Array.from(uniqueExercisesMap.values());
-      const grouped: { [key: string]: any[] } = {};
+      const grouped: Record<string, Record<string, unknown>[]> = {};
       processedExercises.forEach((ex) => {
-        const d = ex.entry_date_str;
+        const d = ex.entry_date_str as string;
         if (!grouped[d]) grouped[d] = [];
         grouped[d].push(ex);
       });
@@ -1225,14 +1247,18 @@ class TelegramBotService {
 
         text += `📅 <b>${formattedLabel}</b>\n`;
         grouped[dateString].forEach((ex) => {
-          const durationVal = Math.round(ex.duration_minutes || 0);
+          const durationVal = Math.round(
+            Number(ex.duration_minutes as string | number) || 0
+          );
           const durationText = durationVal > 0 ? `${durationVal}m` : '';
           const cals = ex.calories_burned
-            ? ` (${Math.round(ex.calories_burned)} kcal)`
+            ? ` (${Math.round(Number(ex.calories_burned as string | number))} kcal)`
             : '';
 
           let emoji = '🏋️';
-          const name = (ex.exercise_name || ex.name || '').toLowerCase();
+          const name = String(
+            (ex.exercise_name as string) || (ex.name as string) || ''
+          ).toLowerCase();
           if (name.includes('run')) emoji = '🏃';
           else if (name.includes('cycl') || name.includes('bike')) emoji = '🚴';
           else if (name.includes('swim')) emoji = '🏊';
@@ -1246,10 +1272,14 @@ class TelegramBotService {
 
           const details = [];
           if (ex.distance) {
-            details.push(`📍 ${Number(ex.distance).toFixed(2)} km`);
+            details.push(
+              `📍 ${Number(ex.distance as string | number).toFixed(2)} km`
+            );
           }
           if (ex.avg_heart_rate) {
-            details.push(`❤️ ${Math.round(ex.avg_heart_rate)} bpm`);
+            details.push(
+              `❤️ ${Math.round(Number(ex.avg_heart_rate as string | number))} bpm`
+            );
           }
 
           if (details.length > 0) {

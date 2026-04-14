@@ -286,58 +286,30 @@ async function createFoodEntry(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodEntryById(entryId: string, userId: string) {
-  const client = await getClient(userId); // User-specific operation (RLS will handle access)
+async function getFoodEntryById(id: string, userId: string) {
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       `SELECT
-        fe.id, 
-        fe.food_id, 
-        fe.meal_id, 
-        mt.name as meal_type, fe.meal_type_id,
-        fe.quantity, 
-        fe.unit, 
-        fe.variant_id, 
-        fe.entry_date, 
-        fe.meal_plan_template_id,
-        fe.food_entry_meal_id, 
-        fe.food_name, 
-        fe.brand_name, 
-        fe.serving_size, 
-        fe.serving_unit, 
-        fe.calories, 
-        fe.protein, 
-        fe.carbs, 
-        fe.fat,
-        fe.saturated_fat, 
-        fe.polyunsaturated_fat, 
-        fe.monounsaturated_fat, 
-        fe.trans_fat, 
-        fe.cholesterol, fe.sodium,
-        fe.potassium, 
-        fe.dietary_fiber, 
-        fe.sugars, 
-        fe.vitamin_a, 
-        fe.vitamin_c, 
-        fe.calcium, 
-        fe.iron, 
-        fe.glycemic_index, 
-        fe.custom_nutrients,
-        fe.user_id
-       FROM food_entries fe
-       LEFT JOIN meal_types mt ON fe.meal_type_id = mt.id
-       WHERE fe.id = $1`,
-      [entryId]
+        fe.id, fe.user_id, fe.food_id, fe.meal_id, mt.name as meal_type, fe.meal_type_id,
+        fe.quantity, fe.unit, fe.variant_id, fe.entry_date, fe.meal_plan_template_id,
+        fe.food_entry_meal_id, fe.food_name, fe.brand_name, fe.serving_size, fe.serving_unit,
+        fe.calories, fe.protein, fe.carbs, fe.fat, fe.saturated_fat, fe.polyunsaturated_fat,
+        fe.monounsaturated_fat, fe.trans_fat, fe.cholesterol, fe.sodium, fe.potassium,
+        fe.dietary_fiber, fe.sugars, fe.vitamin_a, fe.vitamin_c, fe.calcium, fe.iron,
+        fe.glycemic_index, fe.custom_nutrients
+      FROM food_entries fe
+      LEFT JOIN meal_types mt ON fe.meal_type_id = mt.id
+      WHERE fe.id = $1`,
+      [id]
     );
-    return result.rows[0];
+    return (result.rows[0] as Record<string, unknown>) || null;
   } finally {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getFoodEntryOwnerId(entryId: string, userId: string) {
-  const client = await getClient(userId); // User-specific operation (RLS will handle access)
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       'SELECT user_id FROM food_entries WHERE id = $1',
@@ -348,9 +320,8 @@ async function getFoodEntryOwnerId(entryId: string, userId: string) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function deleteFoodEntry(entryId: string, userId: string) {
-  const client = await getClient(userId); // User-specific operation (RLS will handle access)
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       'DELETE FROM food_entries WHERE id = $1 RETURNING id',
@@ -365,13 +336,12 @@ async function updateFoodEntry(
   entryId: string,
   userId: string,
   actingUserId: string,
-  entryData: Record<string, any>,
-  snapshotData: Record<string, any>
+  entryData: Record<string, unknown>,
+  snapshotData: Record<string, unknown>
 ) {
-  const client = await getClient(actingUserId); // User-specific operation
+  const client = await getClient(actingUserId);
   let mealTypeId = entryData.meal_type_id;
   if (!mealTypeId && entryData.meal_type) {
-    // If we are updating the meal type and only have the name
     const typeRes = await client.query(
       'SELECT id FROM meal_types WHERE LOWER(name) = LOWER($1)',
       [entryData.meal_type]
@@ -385,8 +355,8 @@ async function updateFoodEntry(
         unit = COALESCE($2, unit),
         entry_date = COALESCE($3, entry_date),
         variant_id = COALESCE($4, variant_id),
-        food_entry_meal_id = COALESCE($5, food_entry_meal_id), -- New column
-        meal_type_id = COALESCE($31, meal_type_id), -- Added support to update meal category
+        food_entry_meal_id = COALESCE($5, food_entry_meal_id),
+        meal_type_id = COALESCE($31, meal_type_id),
         updated_by_user_id = $6,
         food_name = $7,
         brand_name = $8,
@@ -418,7 +388,7 @@ async function updateFoodEntry(
         entryData.unit,
         entryData.entry_date,
         entryData.variant_id,
-        entryData.food_entry_meal_id, // New column value
+        entryData.food_entry_meal_id,
         actingUserId,
         snapshotData.food_name,
         snapshotData.brand_name,
@@ -453,7 +423,6 @@ async function updateFoodEntry(
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getDailyNutritionByCategory(userId: string, date: string) {
   const client = await getClient(userId);
   try {
@@ -474,16 +443,17 @@ async function getDailyNutritionByCategory(userId: string, date: string) {
     `;
     const result = await client.query(query, [userId, date]);
 
-    const categories: Record<string, any> = {};
-    result.rows.forEach((row: Record<string, any>) => {
-      categories[row.category.toLowerCase()] = {
-        calories: parseFloat(row.calories) || 0,
-        protein: parseFloat(row.protein) || 0,
-        carbohydrate: parseFloat(row.carbohydrate) || 0,
-        fat: parseFloat(row.fat) || 0,
-        sugars: parseFloat(row.sugars) || 0,
-        sodium: parseFloat(row.sodium) || 0,
-        fiber: parseFloat(row.fiber) || 0,
+    const categories: Record<string, Record<string, number>> = {};
+    result.rows.forEach((row: Record<string, unknown>) => {
+      const category = (row.category as string).toLowerCase();
+      categories[category] = {
+        calories: parseFloat(row.calories as string) || 0,
+        protein: parseFloat(row.protein as string) || 0,
+        carbohydrate: parseFloat(row.carbohydrate as string) || 0,
+        fat: parseFloat(row.fat as string) || 0,
+        sugars: parseFloat(row.sugars as string) || 0,
+        sodium: parseFloat(row.sodium as string) || 0,
+        fiber: parseFloat(row.fiber as string) || 0,
       };
     });
     return categories;
@@ -499,9 +469,8 @@ async function getDailyNutritionByCategory(userId: string, date: string) {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getFoodEntriesByDate(userId: string, selectedDate: string) {
-  const client = await getClient(userId); // User-specific operation
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       `SELECT
@@ -510,7 +479,7 @@ async function getFoodEntriesByDate(userId: string, selectedDate: string) {
         fe.food_id,
         fe.meal_id,
         mt.name as meal_type, fe.meal_type_id,
-        fe.quantity, -- Note: quantity is already scaled when created for meal components
+        fe.quantity,
         fe.unit,
         fe.variant_id,
         fe.entry_date,
@@ -553,14 +522,11 @@ async function getFoodEntriesByDate(userId: string, selectedDate: string) {
 }
 
 async function getFoodEntriesByDateAndMealType(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mealType: any
+  userId: string,
+  date: string,
+  mealType: string
 ) {
-  const client = await getClient(userId); // User-specific operation
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       `SELECT
@@ -568,7 +534,7 @@ async function getFoodEntriesByDateAndMealType(
         fe.food_id, 
         fe.meal_id,
         mt.name as meal_type, fe.meal_type_id,
-        fe.quantity, -- Note: quantity is already scaled when created for meal components
+        fe.quantity,
         fe.unit, 
         fe.variant_id, 
         fe.entry_date, 
@@ -616,14 +582,11 @@ async function getFoodEntriesByDateAndMealType(
 }
 
 async function getFoodEntriesByDateRange(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any
+  userId: string,
+  startDate: string,
+  endDate: string
 ) {
-  const client = await getClient(userId); // User-specific operation
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       `SELECT
@@ -631,7 +594,7 @@ async function getFoodEntriesByDateRange(
         fe.food_id, 
         fe.meal_id, 
         mt.name as meal_type, fe.meal_type_id,
-        fe.quantity, -- Note: quantity is already scaled when created for meal components
+        fe.quantity,
         fe.unit, 
         fe.variant_id, 
         fe.entry_date, 
@@ -680,7 +643,7 @@ async function getFoodEntryByDetails(
   variantId: string,
   foodEntryMealId: string | null = null
 ) {
-  const client = await getClient(userId); // User-specific operation
+  const client = await getClient(userId);
   try {
     const result = await client.query(
       `SELECT fe.id 

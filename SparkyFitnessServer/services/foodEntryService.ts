@@ -117,34 +117,35 @@ async function updateFoodEntry(
     if (!existingEntry) {
       throw new Error('Food entry not found.');
     }
-    const foodIdToUse = existingEntry.food_id;
-    const variantIdToUse = entryData.variant_id || existingEntry.variant_id;
+    const foodIdToUse = existingEntry.food_id as string;
+    const variantIdToUse =
+      (entryData.variant_id as string) || (existingEntry.variant_id as string);
     let newSnapshotData;
     if (foodIdToUse) {
       // Variant changed — rebuild snapshot from the new food/variant
-      const food = await foodRepository.getFoodById(
+      const food = (await foodRepository.getFoodById(
         foodIdToUse,
         authenticatedUserId
-      );
+      )) as Record<string, unknown> | null;
       if (!food) {
         throw new Error('Food not found for snapshotting.');
       }
-      const variant = await foodRepository.getFoodVariantById(
+      const variant = (await foodRepository.getFoodVariantById(
         variantIdToUse,
         authenticatedUserId
-      );
+      )) as Record<string, unknown> | null;
       if (!variant) {
         throw new Error('Food variant not found for snapshotting.');
       }
       newSnapshotData = {
-        food_name: food.name,
-        brand_name: food.brand,
-        serving_size: variant.serving_size,
-        serving_unit: variant.serving_unit,
-        calories: variant.calories,
-        protein: variant.protein,
-        carbs: variant.carbs,
-        fat: variant.fat,
+        food_name: food.name as string,
+        brand_name: food.brand as string,
+        serving_size: variant.serving_size as number,
+        serving_unit: variant.serving_unit as string,
+        calories: variant.calories as number,
+        protein: variant.protein as number,
+        carbs: variant.carbs as number,
+        fat: variant.fat as number,
         saturated_fat: variant.saturated_fat,
         polyunsaturated_fat: variant.polyunsaturated_fat,
         monounsaturated_fat: variant.monounsaturated_fat,

@@ -1,20 +1,16 @@
 import { getClient } from '../db/poolManager.js';
-// @ts-expect-error TS(7016): Could not find a declaration file for module 'pg-f... Remove this comment to see the full error message
+// @ts-expect-error TS(7016): Could not find a declaration file for module 'pg-format'
 import format from 'pg-format';
+import type { PoolClient } from 'pg';
 import { log } from '../config/logging.js';
 import exerciseRepository from './exercise.js';
 import activityDetailsRepository from './activityDetailsRepository.js';
 async function upsertExerciseEntryData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createdByUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  exerciseId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  caloriesBurned: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any
+  userId: string,
+  createdByUserId: string,
+  exerciseId: string,
+  caloriesBurned: number,
+  date: string
 ) {
   log('info', 'upsertExerciseEntryData received date parameter:', date);
   const client = await getClient(userId);
@@ -387,8 +383,7 @@ async function _updateExerciseEntryWithClient(
       [id]
     );
     if (Array.isArray(updateData.sets) && updateData.sets.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const setsValues = updateData.sets.map((set: any) => [
+      const setsValues = updateData.sets.map((set: Record<string, unknown>) => [
         id,
         set.set_number,
         set.set_type,
@@ -409,16 +404,12 @@ async function _updateExerciseEntryWithClient(
   return _getExerciseEntryByIdWithClient(client, id);
 }
 async function _createExerciseEntryWithClient(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createdByUserId: any,
+  client: PoolClient,
+  userId: string,
+  entryData: Record<string, unknown>,
+  createdByUserId: string,
   entrySource = 'Manual',
-  exercisePresetEntryId = null
+  exercisePresetEntryId: string | null = null
 ) {
   try {
     // Check for existing entry
@@ -517,8 +508,7 @@ async function _createExerciseEntryWithClient(
         );
       }
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let newEntryId: any;
+    let newEntryId: string;
     if (existingEntryResult && existingEntryResult.rows.length > 0) {
       // Entry exists, update it
       const existingEntryId = existingEntryResult.rows[0].id;
@@ -587,19 +577,24 @@ async function _createExerciseEntryWithClient(
         ]
       );
       newEntryId = entryResult.rows[0].id;
-      if (entryData.sets && entryData.sets.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const setsValues = entryData.sets.map((set: any) => [
-          newEntryId,
-          set.set_number,
-          set.set_type,
-          set.reps,
-          set.weight,
-          set.duration,
-          set.rest_time,
-          set.notes,
-          set.rpe,
-        ]);
+      if (
+        entryData.sets &&
+        Array.isArray(entryData.sets) &&
+        entryData.sets.length > 0
+      ) {
+        const setsValues = entryData.sets.map(
+          (set: Record<string, unknown>) => [
+            newEntryId,
+            set.set_number,
+            set.set_type,
+            set.reps,
+            set.weight,
+            set.duration,
+            set.rest_time,
+            set.notes,
+            set.rpe,
+          ]
+        );
         const setsQuery = format(
           'INSERT INTO exercise_entry_sets (exercise_entry_id, set_number, set_type, reps, weight, duration, rest_time, notes, rpe) VALUES %L',
           setsValues
@@ -618,14 +613,11 @@ async function _createExerciseEntryWithClient(
   }
 }
 async function createExerciseEntry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createdByUserId: any,
+  userId: string,
+  entryData: Record<string, unknown>,
+  createdByUserId: string,
   entrySource = 'Manual',
-  exercisePresetEntryId = null
+  exercisePresetEntryId: string | null = null
 ) {
   const client = await getClient(userId);
   try {
@@ -652,8 +644,7 @@ async function createExerciseEntry(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getExerciseEntryById(id: any, userId: any) {
+async function getExerciseEntryById(id: string, userId: string) {
   const client = await getClient(userId);
   try {
     return _getExerciseEntryByIdWithClient(client, id);
@@ -661,29 +652,25 @@ async function getExerciseEntryById(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getExerciseEntryOwnerId(id: any, userId: any) {
+
+async function getExerciseEntryOwnerId(id: string, userId: string) {
   const client = await getClient(userId);
   try {
     const entryResult = await client.query(
       'SELECT user_id FROM exercise_entries WHERE id = $1',
       [id]
     );
-    return entryResult.rows[0]?.user_id;
+    return entryResult.rows[0]?.user_id as string | undefined;
   } finally {
     client.release();
   }
 }
 
 async function updateExerciseEntry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  id: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateData: any
+  id: string,
+  userId: string,
+  actingUserId: string,
+  updateData: Record<string, unknown>
 ) {
   const client = await getClient(userId);
   try {
@@ -722,27 +709,25 @@ async function updateExerciseEntry(
         userId,
       ]
     );
-    // Only modify sets if they are explicitly provided in the update
     if (updateData.sets !== undefined) {
-      // Delete old sets for the entry
       await client.query(
         'DELETE FROM exercise_entry_sets WHERE exercise_entry_id = $1',
         [id]
       );
-      // Insert new sets if provided and not empty
       if (Array.isArray(updateData.sets) && updateData.sets.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const setsValues = updateData.sets.map((set: any) => [
-          id,
-          set.set_number,
-          set.set_type,
-          set.reps,
-          set.weight,
-          set.duration,
-          set.rest_time,
-          set.notes,
-          set.rpe,
-        ]);
+        const setsValues = updateData.sets.map(
+          (set: Record<string, unknown>) => [
+            id,
+            set.set_number,
+            set.set_type,
+            set.reps,
+            set.weight,
+            set.duration,
+            set.rest_time,
+            set.notes,
+            set.rpe,
+          ]
+        );
         const setsQuery = format(
           'INSERT INTO exercise_entry_sets (exercise_entry_id, set_number, set_type, reps, weight, duration, rest_time, notes, rpe) VALUES %L',
           setsValues
@@ -757,16 +742,11 @@ async function updateExerciseEntry(
   }
 }
 async function updateExerciseEntriesDateByPresetEntryIdWithClient(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  presetEntryId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updatedByUserId: any
+  client: PoolClient,
+  userId: string,
+  presetEntryId: string,
+  entryDate: string,
+  updatedByUserId: string
 ) {
   await client.query(
     `UPDATE exercise_entries
@@ -804,8 +784,7 @@ async function deleteExerciseEntry(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getExerciseEntriesByDate(userId: any, selectedDate: any) {
+async function getExerciseEntriesByDate(userId: string, selectedDate: string) {
   const client = await getClient(userId);
   try {
     // 1. Fetch all exercise preset entries for the given date and user
@@ -862,12 +841,11 @@ async function getExerciseEntriesByDate(userId: any, selectedDate: any) {
     });
     // Process individual exercise entries
     const entriesWithDetails = await Promise.all(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      allExerciseEntries.map(async (row: any) => {
+      allExerciseEntries.map(async (row: Record<string, unknown>) => {
         const activityDetails =
           await activityDetailsRepository.getActivityDetailsByEntryOrPresetId(
             userId,
-            row.id,
+            row.id as string,
             null
           );
         const {
@@ -968,14 +946,10 @@ async function getExerciseEntriesByDate(userId: any, selectedDate: any) {
 }
 
 async function getExerciseProgressData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  exerciseId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any
+  userId: string,
+  exerciseId: string,
+  startDate: string,
+  endDate: string
 ) {
   const client = await getClient(userId);
   try {
@@ -1011,9 +985,12 @@ async function getExerciseProgressData(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getExerciseHistory(userId: any, exerciseId: any, limit = 5) {
-  const client = await getClient(userId);
+async function getExerciseHistory(
+  userId: string,
+  exerciseId: string,
+  limit = 5
+) {
+  const client: PoolClient = await getClient(userId);
   try {
     const result = await client.query(
       `SELECT
@@ -1046,14 +1023,10 @@ async function getExerciseHistory(userId: any, exerciseId: any, limit = 5) {
   }
 }
 async function deleteExerciseEntriesByEntrySourceAndDate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entrySource: any
+  userId: string,
+  startDate: string,
+  endDate: string,
+  entrySource: string
 ) {
   const client = await getClient(userId);
   try {
@@ -1066,8 +1039,9 @@ async function deleteExerciseEntriesByEntrySourceAndDate(
          AND source = $4`,
       [userId, startDate, endDate, entrySource]
     );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const entryIds = entryIdsResult.rows.map((row: any) => row.id);
+    const entryIds = entryIdsResult.rows.map(
+      (row: Record<string, unknown>) => row.id as string
+    );
     if (entryIds.length > 0) {
       // Delete associated activity details
       await client.query(
@@ -1121,9 +1095,9 @@ async function deleteExerciseEntriesByEntrySourceAndDate(
 }
 
 async function getExerciseEntriesByDateRange(
-  userId: any,
-  startDate: any,
-  endDate: any
+  userId: string,
+  startDate: string,
+  endDate: string
 ) {
   const client = await getClient(userId);
   try {

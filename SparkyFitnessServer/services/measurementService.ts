@@ -1,5 +1,7 @@
 import { log } from '../config/logging.js';
-import measurementRepository from '../models/measurementRepository.js';
+import measurementRepository, {
+  CustomCategoryData,
+} from '../models/measurementRepository.js';
 import { loadUserTimezone } from '../utils/timezoneLoader.js';
 import {
   instantToDay,
@@ -1152,7 +1154,7 @@ async function getWaterIntake(
     );
     // waterData will be { water_ml: SUM(...) } from the new repository logic
     return waterData || { water_ml: 0 };
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching water intake for user ${targetUserId} on ${date} by ${authenticatedUserId}:`,
@@ -1236,42 +1238,42 @@ async function upsertWaterIntake(
     );
     garminConnectService
       .logGarminHydration(authenticatedUserId, entryDate, deltaMl)
-      .catch((err) => {
+      .catch((err: unknown) => {
         log(
           'error',
-          `[WATER_SYNC] Atomic Garmin hydration push failed: ${err.message}`
+          `[WATER_SYNC] Atomic Garmin hydration push failed: ${err instanceof Error ? err.message : String(err)}`
         );
       });
     */
 
-    if (!(global as Record<string, any>).hydrationSyncTimers)
-      (global as Record<string, any>).hydrationSyncTimers = {};
-    const timerKey = `${authenticatedUserId}-${entryDate}`;
-    if ((global as any).hydrationSyncTimers[timerKey]) {
-      clearTimeout((global as any).hydrationSyncTimers[timerKey]);
+    const g = global as unknown as Record<string, unknown>;
+    if (!g.hydrationSyncTimers) {
+      g.hydrationSyncTimers = {} as Record<string, NodeJS.Timeout>;
     }
-    (global as Record<string, any>).hydrationSyncTimers[timerKey] = setTimeout(
-      async () => {
-        delete (global as Record<string, any>).hydrationSyncTimers[timerKey];
-        log(
-          'info',
-          `[WATER_SYNC] Running debounced sync to align totals for user ${authenticatedUserId} on ${entryDate}`
-        );
-        const garminService = await import('./garminService.js');
-        garminService.default
-          .syncGarminHydration(authenticatedUserId, entryDate, true)
-          .catch((err: unknown) => {
-            log(
-              'error',
-              `[WATER_SYNC] Debounced sync failed: ${err instanceof Error ? err.message : String(err)}`
-            );
-          });
-      },
-      3000
-    );
+    const timers = g.hydrationSyncTimers as Record<string, NodeJS.Timeout>;
+    const timerKey = `${authenticatedUserId}-${entryDate}`;
+    if (timers[timerKey]) {
+      clearTimeout(timers[timerKey]);
+    }
+    timers[timerKey] = setTimeout(async () => {
+      delete timers[timerKey];
+      log(
+        'info',
+        `[WATER_SYNC] Running debounced sync to align totals for user ${authenticatedUserId} on ${entryDate}`
+      );
+      const garminService = await import('./garminService.js');
+      garminService.default
+        .syncGarminHydration(authenticatedUserId, entryDate, true)
+        .catch((err: unknown) => {
+          log(
+            'error',
+            `[WATER_SYNC] Debounced sync failed: ${err instanceof Error ? err.message : String(err)}`
+          );
+        });
+    }, 3000);
 
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error upserting water intake for user ${authenticatedUserId} by ${actingUserId}:`,
@@ -1297,7 +1299,7 @@ async function getWaterIntakeEntryById(
       authenticatedUserId
     );
     return entry;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching water intake entry ${id} by ${authenticatedUserId}:`,
@@ -1310,7 +1312,7 @@ async function updateWaterIntake(
   authenticatedUserId: string,
   actingUserId: string,
   id: string,
-  updateData: Record<string, any>
+  updateData: Record<string, unknown>
 ) {
   try {
     const entryOwnerId = await measurementRepository.getWaterIntakeEntryOwnerId(
@@ -1345,16 +1347,16 @@ async function updateWaterIntake(
           : updatedEntry.entry_date.toISOString().split('T')[0];
       mfpSyncService
         .syncDailyNutritionToMFP(authenticatedUserId, entryDate)
-        .catch((err: any) => {
+        .catch((err: unknown) => {
           log(
             'error',
-            `Background MFP water sync failed for user ${authenticatedUserId} on ${entryDate}: ${err.message}`
+            `Background MFP water sync failed for user ${authenticatedUserId} on ${entryDate}: ${err instanceof Error ? err.message : String(err)}`
           );
         });
     }
 
     return updatedEntry;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error updating water intake entry ${id} by user ${authenticatedUserId} in measurementService:`,
@@ -1363,7 +1365,7 @@ async function updateWaterIntake(
     throw error;
   }
 }
-async function deleteWaterIntake(authenticatedUserId: any, id: any) {
+async function deleteWaterIntake(authenticatedUserId: string, id: string) {
   try {
     const entry = await measurementRepository.getWaterIntakeEntryById(
       id,
@@ -1395,16 +1397,16 @@ async function deleteWaterIntake(authenticatedUserId: any, id: any) {
           : entry.entry_date.toISOString().split('T')[0];
       mfpSyncService
         .syncDailyNutritionToMFP(authenticatedUserId, entryDate)
-        .catch((err: any) => {
+        .catch((err: unknown) => {
           log(
             'error',
-            `Background MFP water sync failed for user ${authenticatedUserId} on ${entryDate}: ${err.message}`
+            `Background MFP water sync failed for user ${authenticatedUserId} on ${entryDate}: ${err instanceof Error ? err.message : String(err)}`
           );
         });
     }
 
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error deleting water intake entry ${id} by user ${authenticatedUserId} in measurementService:`,
@@ -1427,7 +1429,7 @@ async function getCheckInMeasurementsByDateRange(
         endDate
       );
     return measurements || [];
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching check-in measurements range for user ${targetUserId} by ${authenticatedUserId}:`,
@@ -1448,7 +1450,7 @@ async function getCheckInMeasurements(
         date
       );
     return measurements || {};
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching check-in measurements for user ${targetUserId} on ${date} by ${authenticatedUserId}:`,
@@ -1463,7 +1465,7 @@ async function getCustomCategories(
 ) {
   try {
     return await measurementRepository.getCustomCategories(targetUserId);
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching custom categories for user ${targetUserId} by ${authenticatedUserId}:`,
@@ -1476,12 +1478,14 @@ async function getCustomCategoryById(authenticatedUserId: string, id: string) {
   try {
     const categories =
       await measurementRepository.getCustomCategories(authenticatedUserId);
-    const category = categories.find((c: Record<string, any>) => c.id === id);
+    const category = categories.find(
+      (c: Record<string, unknown>) => c.id === id
+    );
     if (!category) {
       throw new Error('Custom category not found.');
     }
     return category;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching custom category ${id} by ${authenticatedUserId}:`,
@@ -1493,16 +1497,20 @@ async function getCustomCategoryById(authenticatedUserId: string, id: string) {
 async function createCustomCategory(
   authenticatedUserId: string,
   actingUserId: string,
-  categoryData: Record<string, any>
+  categoryData: Record<string, unknown>
 ) {
   try {
-    const data = {
-      ...categoryData,
-      user_id: categoryData.user_id || authenticatedUserId,
+    const data: CustomCategoryData = {
+      name: categoryData.name as string,
+      frequency: (categoryData.frequency as string) || 'Daily',
+      measurement_type: (categoryData.measurement_type as string) || 'numeric',
+      user_id: (categoryData.user_id as string) || authenticatedUserId,
       created_by_user_id: actingUserId,
+      display_name: categoryData.display_name as string | null,
+      data_type: (categoryData.data_type as string) || 'numeric',
     };
-    return await measurementRepository.createCustomCategory(data as any);
-  } catch (error) {
+    return await measurementRepository.createCustomCategory(data);
+  } catch (error: unknown) {
     log(
       'error',
       `Error creating custom category for user ${authenticatedUserId} by ${actingUserId}:`,
@@ -1515,7 +1523,7 @@ async function updateCustomCategory(
   authenticatedUserId: string,
   actingUserId: string,
   categoryId: string,
-  categoryData: Record<string, any>
+  categoryData: Record<string, unknown>
 ) {
   try {
     const ownerId = await measurementRepository.getCustomCategoryOwnerId(
@@ -1531,7 +1539,7 @@ async function updateCustomCategory(
       actingUserId,
       categoryData
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error updating custom category ${categoryId} for user ${authenticatedUserId} by ${actingUserId}:`,
@@ -1560,7 +1568,7 @@ async function deleteCustomCategory(
       throw new Error('Custom category not found or not authorized to delete.');
     }
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error deleting custom category ${categoryId} for user ${authenticatedUserId}:`,
@@ -1579,7 +1587,7 @@ async function getCustomMeasurementsByDate(
       targetUserId,
       date
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching custom measurements for user ${targetUserId} on ${date} by ${authenticatedUserId}:`,
@@ -1589,36 +1597,33 @@ async function getCustomMeasurementsByDate(
   }
 }
 async function createCustomMeasurement(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  measurementData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  measurementData: Record<string, unknown>
 ) {
   try {
     const category = await getCustomCategoryById(
       authenticatedUserId,
-      measurementData.custom_category_id
+      measurementData.custom_category_id as string
     );
     if (!category) {
       throw new Error('Custom category not found.');
     }
-    const userId = measurementData.user_id || authenticatedUserId;
+    const userId = (measurementData.user_id as string) || authenticatedUserId;
     return await measurementRepository.upsertCustomMeasurement(
       userId,
       actingUserId,
-      measurementData.custom_category_id,
-      measurementData.value,
-      measurementData.entry_date,
-      measurementData.entry_hour ?? 0,
-      measurementData.entry_timestamp ??
-        new Date(measurementData.entry_date).toISOString(),
-      measurementData.notes ?? null,
-      category.frequency,
-      measurementData.source ?? 'manual'
+      measurementData.custom_category_id as string,
+      measurementData.value as number,
+      measurementData.entry_date as string,
+      (measurementData.entry_hour as number) ?? 0,
+      (measurementData.entry_timestamp as string) ??
+        new Date(measurementData.entry_date as string).toISOString(),
+      (measurementData.notes as string) ?? null,
+      category.frequency as string,
+      (measurementData.source as string) ?? 'manual'
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error creating custom measurement for user ${authenticatedUserId} by ${actingUserId}:`,
@@ -1631,24 +1636,25 @@ async function updateCustomMeasurement(
   authenticatedUserId: string,
   actingUserId: string,
   measurementId: string,
-  measurementData: Record<string, any>
+  measurementData: Record<string, unknown>
 ) {
   try {
     // RLS in measurementRepository will handle checking if the measurement belongs to the user
     return await measurementRepository.upsertCustomMeasurement(
       authenticatedUserId,
       actingUserId,
-      measurementData.custom_category_id ?? measurementData.category_id,
-      measurementData.value,
-      measurementData.entry_date,
-      measurementData.entry_hour ?? 0,
-      measurementData.entry_timestamp ??
-        new Date(measurementData.entry_date).toISOString(),
-      measurementData.notes ?? null,
-      measurementData.frequency ?? 'Daily',
-      measurementData.source ?? 'manual'
+      (measurementData.custom_category_id ??
+        measurementData.category_id) as string,
+      measurementData.value as number,
+      measurementData.entry_date as string,
+      (measurementData.entry_hour as number) ?? 0,
+      (measurementData.entry_timestamp as string) ??
+        new Date(measurementData.entry_date as string).toISOString(),
+      (measurementData.notes as string) ?? null,
+      (measurementData.frequency as string) ?? 'Daily',
+      (measurementData.source as string) ?? 'manual'
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error updating custom measurement ${measurementId} for user ${authenticatedUserId} by ${actingUserId}:`,
@@ -1673,7 +1679,7 @@ async function deleteCustomMeasurement(
       );
     }
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error deleting custom measurement ${measurementId} for user ${authenticatedUserId}:`,
@@ -1685,20 +1691,20 @@ async function deleteCustomMeasurement(
 async function processSleepEntry(
   userId: string,
   actingUserId: string,
-  sleepData: Record<string, any>
+  sleepData: Record<string, unknown>
 ) {
   try {
-    const bedtime = new Date(sleepData.bedtime);
-    const wakeTime = new Date(sleepData.wake_time);
+    const bedtime = new Date(sleepData.bedtime as string);
+    const wakeTime = new Date(sleepData.wake_time as string);
     if (isNaN(bedtime.getTime()) || isNaN(wakeTime.getTime())) {
       throw new Error('Invalid bedtime or wake_time provided.');
     }
-    const entryDate = sleepData.entry_date;
+    const entryDate = sleepData.entry_date as string;
     if (!entryDate || !isDayString(entryDate)) {
       throw new Error('Invalid entry_date provided for sleep entry.');
     }
     // Idempotent approach: Replace any manual entry or from the same source on that day
-    const source = sleepData.source || 'manual';
+    const source = (sleepData.source as string) || 'manual';
     // This cleaning is now handled in processHealthData for bulk syncs,
     // but for single calls we might still want it or assume caller does it.
     // For single web/manual entry, let's keep it.
@@ -1722,7 +1728,7 @@ async function processSleepEntry(
       }
     );
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error processing sleep entry for user ${userId} on ${sleepData.entry_date}:`,
@@ -1747,7 +1753,7 @@ async function getSleepEntryByDate(
     // Usually we just return the most recent or summarized one.
     // For now, return the first one found or null.
     return sleepEntries.length > 0 ? sleepEntries[0] : null;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching sleep entry for user ${targetUserId} on ${date}:`,
@@ -1766,7 +1772,7 @@ async function deleteSleepEntry(authenticatedUserId: string, id: string) {
       throw new Error('Sleep entry not found or not authorized to delete.');
     }
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error deleting sleep entry ${id} for user ${authenticatedUserId}:`,
@@ -1787,7 +1793,7 @@ async function getMeasurementHistory(
       type
     );
     return latest ? [latest] : [];
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching measurement history for user ${targetUserId}, type ${type}, days ${days}:`,
@@ -1804,7 +1810,7 @@ async function getLatestWeight(
     const latestWeight =
       await measurementRepository.getLatestMeasurement(targetUserId);
     return latestWeight;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching latest weight for user ${targetUserId}:`,
@@ -1819,7 +1825,7 @@ async function getCheckInEntryById(authenticatedUserId: string, id: string) {
       authenticatedUserId,
       new Date().toISOString().split('T')[0]
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching check-in entry ${id} by ${authenticatedUserId}:`,
@@ -1832,7 +1838,7 @@ async function updateCheckIn(
   authenticatedUserId: string,
   actingUserId: string,
   id: string,
-  updateData: Record<string, any>
+  updateData: Record<string, unknown>
 ) {
   try {
     return await measurementRepository.updateCheckInMeasurements(
@@ -1841,7 +1847,7 @@ async function updateCheckIn(
       id,
       updateData
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error updating check-in ${id} for user ${authenticatedUserId} by ${actingUserId}:`,
@@ -1860,7 +1866,7 @@ async function deleteCheckIn(authenticatedUserId: string, id: string) {
       throw new Error('Check-in not found or not authorized to delete.');
     }
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error deleting check-in ${id} for user ${authenticatedUserId}:`,
@@ -1884,10 +1890,10 @@ async function getTdeeInputs(
     // 3. Fetch height from latest check-in or profile (prefer check-in?)
     const latestHeightRecord = await measurementRepository
       .getMostRecentMeasurement(targetUserId, 'height')
-      .then((r: any) => (r ? [r] : []));
+      .then((r: unknown) => (r ? [r] : []));
     const height =
       latestHeightRecord.length > 0
-        ? latestHeightRecord[0].value
+        ? (latestHeightRecord[0] as Record<string, unknown>).value
         : user.height_cm;
     return {
       age,
@@ -1895,7 +1901,7 @@ async function getTdeeInputs(
       weight: latestWeight,
       height_cm: height || user.height_cm, // fallback to profile height
     };
-  } catch (error) {
+  } catch (error: unknown) {
     log('error', `Error fetching TDEE inputs for user ${targetUserId}:`, error);
     throw error;
   }
@@ -1922,7 +1928,7 @@ async function getBulkMeasurementHistory(
         endDate
       );
     return history;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error in getBulkMeasurementHistory for user ${targetUserId}, metrics ${metricTypes}, days ${days}:`,
@@ -1937,7 +1943,7 @@ async function upsertCustomMeasurementEntry(
   actingUserId: string,
   entryData: {
     category_id: string;
-    value: any;
+    value: number | string | boolean;
     entry_date: string;
     entry_hour?: number | null;
     entry_timestamp?: string;
@@ -1946,7 +1952,7 @@ async function upsertCustomMeasurementEntry(
     frequency?: string;
   }
 ) {
-  const category = await getCustomCategoryById(entryData.category_id, userId);
+  const category = await getCustomCategoryById(userId, entryData.category_id);
   if (!category) {
     throw new Error(`Category ${entryData.category_id} not found.`);
   }
@@ -1955,25 +1961,25 @@ async function upsertCustomMeasurementEntry(
     userId,
     actingUserId,
     entryData.category_id,
-    entryData.value,
+    entryData.value as number,
     entryData.entry_date,
     entryData.entry_hour ?? 0,
     entryData.entry_timestamp ?? new Date(entryData.entry_date).toISOString(),
     entryData.notes ?? null,
-    entryData.frequency ?? category.frequency ?? 'Daily',
+    entryData.frequency ?? (category.frequency as string) ?? 'Daily',
     entryData.source ?? 'manual'
   );
 }
 
 async function calculateSleepScore(
-  sleepEntryData: Record<string, any>,
-  stageEvents: any[],
+  sleepEntryData: Record<string, unknown>,
+  stageEvents: Record<string, unknown>[],
   age: number | null = null,
   gender: string | null = null
 ) {
   const { duration_in_seconds, time_asleep_in_seconds } = sleepEntryData;
 
-  if (!duration_in_seconds || duration_in_seconds <= 0) return 0;
+  if (!duration_in_seconds || (duration_in_seconds as number) <= 0) return 0;
 
   let score = 0;
   const maxScore = 100;
@@ -2007,21 +2013,23 @@ async function calculateSleepScore(
   const tstWeight = 30;
 
   if (
-    duration_in_seconds >= optimalMinDuration &&
-    duration_in_seconds <= optimalMaxDuration
+    (duration_in_seconds as number) >= optimalMinDuration &&
+    (duration_in_seconds as number) <= optimalMaxDuration
   ) {
     score += tstWeight;
   } else {
     // Deduct points for being outside optimal range
     const deviation = Math.min(
-      Math.abs(duration_in_seconds - optimalMinDuration),
-      Math.abs(duration_in_seconds - optimalMaxDuration)
+      Math.abs((duration_in_seconds as number) - optimalMinDuration),
+      Math.abs((duration_in_seconds as number) - optimalMaxDuration)
     );
     score += Math.max(0, tstWeight - (deviation / 3600) * 5); // 5 points deduction per hour deviation
   }
 
   // Component 2: Sleep Efficiency - 25% of score
-  const sleepEfficiency = (time_asleep_in_seconds / duration_in_seconds) * 100;
+  const sleepEfficiency =
+    ((time_asleep_in_seconds as number) / (duration_in_seconds as number)) *
+    100;
   const optimalEfficiency = 85; // 85%
   const efficiencyWeight = 25;
 
@@ -2044,11 +2052,11 @@ async function calculateSleepScore(
     let inAwakePeriod = false;
     for (const event of stageEvents) {
       if (event.stage_type === 'deep') {
-        deepSleepDuration += event.duration_in_seconds;
+        deepSleepDuration += event.duration_in_seconds as number;
       } else if (event.stage_type === 'rem') {
-        remSleepDuration += event.duration_in_seconds;
+        remSleepDuration += event.duration_in_seconds as number;
       } else if (event.stage_type === 'awake') {
-        awakeDuration += event.duration_in_seconds;
+        awakeDuration += event.duration_in_seconds as number;
         if (!inAwakePeriod) {
           numAwakePeriods++;
           inAwakePeriod = true;
@@ -2062,7 +2070,7 @@ async function calculateSleepScore(
   const totalSleepStagesDuration =
     deepSleepDuration +
     remSleepDuration +
-    (time_asleep_in_seconds - awakeDuration);
+    ((time_asleep_in_seconds as number) - awakeDuration);
 
   if (totalSleepStagesDuration > 0) {
     const deepSleepPercentage =
@@ -2130,7 +2138,7 @@ async function upsertCheckInMeasurements(
   authenticatedUserId: string,
   targetUserId: string,
   date: string,
-  data: Record<string, any>
+  data: Record<string, unknown>
 ) {
   try {
     return await measurementRepository.upsertCheckInMeasurements(
@@ -2139,7 +2147,7 @@ async function upsertCheckInMeasurements(
       date,
       data
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error upserting check-in measurements for user ${targetUserId}:`,
@@ -2159,7 +2167,7 @@ async function getLatestCheckInMeasurementsOnOrBeforeDate(
       targetUserId,
       date
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error fetching latest check-in for user ${targetUserId}:`,
@@ -2173,12 +2181,12 @@ async function updateCheckInMeasurements(
   authenticatedUserId: string,
   targetUserId: string,
   date: string,
-  data: Record<string, any>
+  data: Record<string, unknown>
 ) {
   try {
     return await measurementRepository.updateCheckInMeasurements(
-      targetUserId,
       authenticatedUserId,
+      targetUserId,
       date,
       data
     );

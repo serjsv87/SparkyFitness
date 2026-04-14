@@ -1,7 +1,9 @@
 import { getClient } from '../db/poolManager.js';
 import { log } from '../config/logging.js';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function createActivityDetail(userId: any, detail: any) {
+async function createActivityDetail(
+  userId: string,
+  detail: Record<string, unknown>
+) {
   const client = await getClient(userId);
   const {
     exercise_entry_id,
@@ -67,10 +69,9 @@ async function createActivityDetail(userId: any, detail: any) {
   }
 }
 async function getActivityDetailsByEntryOrPresetId(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  entryId = null,
-  presetEntryId = null
+  userId: string,
+  entryId: string | null = null,
+  presetEntryId: string | null = null
 ) {
   const client = await getClient(userId);
   let query;
@@ -102,8 +103,7 @@ async function getActivityDetailsByEntryOrPresetId(
   }
   try {
     const result = await client.query(query, values);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return result.rows.map((row: any) => {
+    return result.rows.map((row: Record<string, unknown>) => {
       // Recursively parse detail_data until it's not a JSON string anymore.
       // This handles cases where data might be double-stringified.
       while (typeof row.detail_data === 'string') {
@@ -131,8 +131,11 @@ async function getActivityDetailsByEntryOrPresetId(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function updateActivityDetail(userId: any, id: any, detail: any) {
+async function updateActivityDetail(
+  userId: string,
+  id: string,
+  detail: Record<string, unknown>
+) {
   const client = await getClient(userId);
   const { provider_name, detail_type, detail_data, updated_by_user_id } =
     detail;
@@ -190,8 +193,7 @@ async function updateActivityDetail(userId: any, id: any, detail: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteActivityDetail(userId: any, id: any) {
+async function deleteActivityDetail(userId: string, id: string) {
   const client = await getClient(userId);
   const query = `
         DELETE FROM exercise_entry_activity_details
@@ -222,12 +224,9 @@ async function deleteActivityDetail(userId: any, id: any) {
   }
 }
 async function deleteActivityDetailsByEntryIdAndProvider(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  providerName: any
+  userId: string,
+  entryId: string,
+  providerName: string
 ) {
   const client = await getClient(userId);
   const query = `

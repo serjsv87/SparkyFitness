@@ -398,7 +398,7 @@ async function getCustomCategories(userId: string) {
     client.release();
   }
 }
-async function createCustomCategory(categoryData: {
+export interface CustomCategoryData {
   user_id: string;
   name: string;
   display_name?: string | null;
@@ -406,7 +406,9 @@ async function createCustomCategory(categoryData: {
   measurement_type: string;
   data_type?: string | null;
   created_by_user_id: string;
-}) {
+}
+
+async function createCustomCategory(categoryData: CustomCategoryData) {
   const client = await getClient(categoryData.created_by_user_id); // User-specific operation, using created_by_user_id for RLS context
   try {
     const result = await client.query(
@@ -808,11 +810,11 @@ async function getStepCaloriesForDate(
     const activitySteps = sessions.reduce(
       (sum: number, s: ExerciseSessionResponse) => {
         if (s.type === 'preset') {
-          const exercises = (s.exercises as any[]) ?? [];
+          const exercises = (s.exercises as Record<string, unknown>[]) ?? [];
           return (
             sum +
             exercises.reduce(
-              (eSum: number, e: any) =>
+              (eSum: number, e: Record<string, unknown>) =>
                 eSum + (parseInt(String(e.steps ?? '0'), 10) || 0),
               0
             )

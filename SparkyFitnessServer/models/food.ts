@@ -696,8 +696,8 @@ async function createFoodsInBulk(
   foodDataArray: Record<string, unknown>[]
 ) {
   class DuplicateFoodError extends Error {
-    duplicates: any[];
-    constructor(message: string, duplicates: any[]) {
+    duplicates: Record<string, unknown>[];
+    constructor(message: string, duplicates: Record<string, unknown>[]) {
       super(message);
       this.name = 'DuplicateFoodError';
       this.duplicates = duplicates;
@@ -737,10 +737,8 @@ async function createFoodsInBulk(
   // 2. Pre-flight Duplicate Check before starting the db transaction
   const potentialDuplicates = foodsToCreate.map((food) => [
     userId,
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
-    food.name,
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
-    food.brand,
+    (food as { name: string }).name,
+    (food as { brand: string }).brand,
   ]);
   const flatValues = potentialDuplicates.flat();
   let placeholderIndex = 1;
@@ -780,35 +778,61 @@ async function createFoodsInBulk(
     let totalFoodsCreated = 0;
     let totalVariantsCreated = 0;
     for (const food of foodsToCreate) {
+      const foodTyped = food as {
+        name: string;
+        brand: string;
+        is_custom: unknown;
+        user_id: string;
+        shared_with_public: unknown;
+        is_quick_food: unknown;
+        barcode: string;
+        provider_external_id: string;
+        provider_type: string;
+        variants: unknown[];
+      };
       const foodResult = await client.query(
         `INSERT INTO foods (name, brand, is_custom, user_id, shared_with_public, is_quick_food,barcode,provider_external_id,provider_type, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())
            RETURNING id`,
         [
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          food.name,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          food.brand,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          sanitizeBoolean(food.is_custom) ?? true,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          food.user_id,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          sanitizeBoolean(food.shared_with_public) ?? false,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          sanitizeBoolean(food.is_quick_food) ?? false,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          (food.barcode && normalizeBarcode(food.barcode)) || null,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          food.provider_external_id || null,
-          // @ts-expect-error TS(2571): Object is of type 'unknown'.
-          food.provider_type || null,
+          foodTyped.name,
+          foodTyped.brand,
+          sanitizeBoolean(foodTyped.is_custom) ?? true,
+          foodTyped.user_id,
+          sanitizeBoolean(foodTyped.shared_with_public) ?? false,
+          sanitizeBoolean(foodTyped.is_quick_food) ?? false,
+          (foodTyped.barcode && normalizeBarcode(foodTyped.barcode)) || null,
+          foodTyped.provider_external_id || null,
+          foodTyped.provider_type || null,
         ]
       );
       const newFoodId = foodResult.rows[0].id;
       totalFoodsCreated++;
-      // @ts-expect-error TS(2571): Object is of type 'unknown'.
-      for (const variant of food.variants) {
+      for (const variant of foodTyped.variants) {
+        const v = variant as {
+          serving_size: unknown;
+          serving_unit: string;
+          is_default: unknown;
+          calories: unknown;
+          protein: unknown;
+          carbs: unknown;
+          fat: unknown;
+          saturated_fat: unknown;
+          polyunsaturated_fat: unknown;
+          monounsaturated_fat: unknown;
+          trans_fat: unknown;
+          cholesterol: unknown;
+          sodium: unknown;
+          potassium: unknown;
+          dietary_fiber: unknown;
+          sugars: unknown;
+          vitamin_a: unknown;
+          vitamin_c: unknown;
+          calcium: unknown;
+          iron: unknown;
+          glycemic_index: unknown;
+          custom_nutrients: unknown;
+        };
         await client.query(
           `INSERT INTO food_variants (
               food_id, serving_size, serving_unit, is_default, calories, protein, carbs, fat,
@@ -821,28 +845,28 @@ async function createFoodsInBulk(
             )`,
           [
             newFoodId,
-            sanitizeNumeric(variant.serving_size),
-            variant.serving_unit,
-            sanitizeBoolean(variant.is_default) ?? true,
-            sanitizeNumeric(variant.calories),
-            sanitizeNumeric(variant.protein),
-            sanitizeNumeric(variant.carbs),
-            sanitizeNumeric(variant.fat),
-            sanitizeNumeric(variant.saturated_fat),
-            sanitizeNumeric(variant.polyunsaturated_fat),
-            sanitizeNumeric(variant.monounsaturated_fat),
-            sanitizeNumeric(variant.trans_fat),
-            sanitizeNumeric(variant.cholesterol),
-            sanitizeNumeric(variant.sodium),
-            sanitizeNumeric(variant.potassium),
-            sanitizeNumeric(variant.dietary_fiber),
-            sanitizeNumeric(variant.sugars),
-            sanitizeNumeric(variant.vitamin_a),
-            sanitizeNumeric(variant.vitamin_c),
-            sanitizeNumeric(variant.calcium),
-            sanitizeNumeric(variant.iron),
-            sanitizeGlycemicIndex(variant.glycemic_index),
-            variant.custom_nutrients || {},
+            sanitizeNumeric(v.serving_size),
+            v.serving_unit,
+            sanitizeBoolean(v.is_default) ?? true,
+            sanitizeNumeric(v.calories),
+            sanitizeNumeric(v.protein),
+            sanitizeNumeric(v.carbs),
+            sanitizeNumeric(v.fat),
+            sanitizeNumeric(v.saturated_fat),
+            sanitizeNumeric(v.polyunsaturated_fat),
+            sanitizeNumeric(v.monounsaturated_fat),
+            sanitizeNumeric(v.trans_fat),
+            sanitizeNumeric(v.cholesterol),
+            sanitizeNumeric(v.sodium),
+            sanitizeNumeric(v.potassium),
+            sanitizeNumeric(v.dietary_fiber),
+            sanitizeNumeric(v.sugars),
+            sanitizeNumeric(v.vitamin_a),
+            sanitizeNumeric(v.vitamin_c),
+            sanitizeNumeric(v.calcium),
+            sanitizeNumeric(v.iron),
+            sanitizeGlycemicIndex(v.glycemic_index),
+            v.custom_nutrients || {},
           ]
         );
         totalVariantsCreated++;

@@ -83,8 +83,8 @@ export async function executeMeasurement(
 
   const standardTypes = ['weight', 'neck', 'waist', 'hips', 'steps', 'height'];
 
-  for (const m of measurements as Record<string, any>[]) {
-    const type = m.measurement_type || m.type;
+  for (const m of measurements as Record<string, unknown>[]) {
+    const type = (m.measurement_type as string) || (m.type as string);
     if (!type || m.value === undefined) continue;
 
     try {
@@ -93,13 +93,13 @@ export async function executeMeasurement(
           userId,
           userId,
           dateToUse,
-          { [type]: m.value }
+          { [type]: m.value as number }
         );
         confirmed.push(`${type}: ${m.value}${m.unit ? ' ' + m.unit : ''}`);
       } else {
         // Custom measurement
-        const name = m.name || type;
-        let category = null;
+        const name = (m.name as string) || type;
+        let category: Record<string, unknown> | null = null;
         try {
           category = await measurementService.getOrCreateCustomCategory(
             userId,
@@ -117,8 +117,8 @@ export async function executeMeasurement(
           await measurementRepository.upsertCustomMeasurement(
             userId,
             userId,
-            category.id,
-            m.value,
+            category.id as string,
+            m.value as number,
             dateToUse,
             null,
             new Date().toISOString(),
@@ -474,8 +474,8 @@ export async function executeDeleteMeasurement(
     const itemsToDelete = Array.isArray(measurements) ? measurements : [data];
     if (itemsToDelete.length === 0) return '❓ Не вказано, що саме видалити.';
 
-    const matches: any[] = [];
-    for (const m of itemsToDelete as Record<string, any>[]) {
+    const matches: Record<string, unknown>[] = [];
+    for (const m of itemsToDelete as Record<string, unknown>[]) {
       const type = (m.type as string) || 'weight';
       const records =
         await measurementRepository.getCheckInMeasurementsByDateRange(
@@ -484,7 +484,7 @@ export async function executeDeleteMeasurement(
           dateToUse
         );
 
-      for (const rec of records as Record<string, any>[]) {
+      for (const rec of records as Record<string, unknown>[]) {
         if (rec[type] !== null) {
           // If a specific value was mentioned, match it
           if (m.value && Math.abs(Number(rec[type]) - Number(m.value)) > 0.1)
@@ -528,13 +528,17 @@ export async function executeDeleteFood(
     const foodName = data.food_name as string;
 
     const records = await foodEntry.getFoodEntriesByDate(userId, dateToUse);
-    const matches = (records as any[])
+    const matches = (records as Record<string, unknown>[])
       .filter(
-        (r: any) =>
-          !foodName ||
-          r.food_name.toLowerCase().includes(foodName.toLowerCase())
+        (r: Record<string, unknown>) =>
+          (r.food_name as string)
+            .toLowerCase()
+            .includes(foodName.toLowerCase()) ||
+          (r.food_brand as string)
+            ?.toLowerCase()
+            ?.includes(foodName.toLowerCase())
       )
-      .map((r: any) => ({
+      .map((r: Record<string, unknown>) => ({
         id: r.id,
         type: 'food',
         name: r.food_name,

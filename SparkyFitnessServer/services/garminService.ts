@@ -19,23 +19,52 @@ import goalRepository from '../models/goalRepository.js';
 // Removed AxiosError import as it is never read.
 
 interface GarminData {
-  activities?: any[];
-  workouts?: any[];
+  activities?: Record<string, unknown>[];
+  workouts?: Record<string, unknown>[];
   workoutName?: string;
   description?: string;
-  workoutSegments?: any[];
+  workoutSegments?: Record<string, unknown>[];
 }
 
 interface GarminHealthData {
-  stress?: any[];
+  stress?: Record<string, unknown>[];
+}
+
+interface GarminSet {
+  setType: string;
+  duration?: number;
+  weight?: number;
+  repetitionCount?: number;
+  notes?: string;
+  startTime: string | number | Date;
+  exercises?: { name?: string; category?: string }[];
+  category?: string;
+  stepIndex?: number;
+  wktStepId?: number;
 }
 
 interface GarminSessionData {
-  activity: any;
-  exercise_sets?: { exerciseSets: any[] };
-  details?: any;
-  splits?: any;
-  hr_in_timezones?: any[];
+  activity: Record<string, unknown>;
+  exercise_sets?: { exerciseSets: GarminSet[] };
+  details?: Record<string, unknown>;
+  splits?: Record<string, unknown>;
+  hr_in_timezones?: Record<string, unknown>[];
+}
+
+interface ExerciseGroup {
+  name: string;
+  stepIndex: number | null;
+  exerciseDetails: { category: string };
+  sets: Record<string, unknown>[];
+  totalDuration: number;
+  activeDuration: number;
+  startTime: number | null;
+  endTime: number | null;
+}
+
+interface WorkoutPreset {
+  id: string;
+  exercises?: Record<string, unknown>[];
 }
 
 async function processActivitiesAndWorkouts(
@@ -67,22 +96,32 @@ async function processActivitiesAndWorkouts(
   );
   // Process Activities and Workouts
   if (activities && Array.isArray(activities)) {
-    for (const activityData of activities) {
+    for (const activityData of activities as Record<string, unknown>[]) {
       // Determine if it's a workout session (with summarizedExerciseSets or exercise_sets)
       // or a simple activity.
+      const activity = activityData.activity as
+        | Record<string, unknown>
+        | undefined;
+      const exerciseSets = activityData.exercise_sets as
+        | Record<string, unknown>
+        | undefined;
       if (
-        activityData.activity?.summarizedExerciseSets?.length > 0 ||
-        activityData.exercise_sets?.exerciseSets?.length > 0
+        (activity?.summarizedExerciseSets as unknown[] | undefined)?.length ||
+        (exerciseSets?.exerciseSets as unknown[] | undefined)?.length
       ) {
         await processGarminWorkoutSession(
           userId,
-          activityData,
+          activityData as unknown as GarminSessionData,
           startDate,
           endDate,
           timezone
         );
-      } else if (activityData.activity) {
-        await processGarminSimpleActivity(userId, activityData, timezone);
+      } else if (activity) {
+        await processGarminSimpleActivity(
+          userId,
+          activityData as unknown as GarminSessionData,
+          timezone
+        );
       }
       processedCount++; // Increment for each activity processed
     }
@@ -113,12 +152,16 @@ async function processGarminHealthAndWellnessData(
     // Process Stress Data
     if (healthData.stress && Array.isArray(healthData.stress)) {
       for (const stressEntry of healthData.stress) {
-        const {
-          date,
-          raw_stress_data,
-          derived_mood_value,
-          derived_mood_notes,
-        } = stressEntry;
+        const date = stressEntry.date as string;
+        const raw_stress_data = stressEntry.raw_stress_data as
+          | Record<string, unknown>
+          | undefined;
+        const derived_mood_value = stressEntry.derived_mood_value as
+          | number
+          | undefined;
+        const derived_mood_notes = stressEntry.derived_mood_notes as
+          | string
+          | undefined;
         // Store raw stress data as a custom measurement
         if (raw_stress_data) {
           try {
@@ -135,7 +178,7 @@ async function processGarminHealthAndWellnessData(
               actingUserId,
               {
                 category_id: customCategory.id,
-                value: raw_stress_data,
+                value: JSON.stringify(raw_stress_data),
                 entry_date: date,
                 notes: 'Source: Garmin',
                 source: 'garmin',
@@ -236,22 +279,22 @@ async function processGarminWorkoutSession(
 ) {
   const { activity, exercise_sets } = sessionData;
   const workoutName = activity.activityName || 'Garmin Workout Session';
-  const entryDate = activity.startTimeLocal
-    ? activity.startTimeLocal.substring(0, 10)
+  const entryDate = (activity.startTimeLocal as string)
+    ? (activity.startTimeLocal as string).substring(0, 10)
     : todayInZone(timezone);
   // Data from sessionData should already be parsed objects if coming from the microservice
   const details = sessionData.details || {};
-  const activityDetailMetrics = details.activityDetailMetrics || [];
-  const metricDescriptors = details.metricDescriptors || [];
+  const activityDetailMetrics =
+    (details.activityDetailMetrics as Record<string, unknown>[]) || [];
   // Find the index for heart rate in activityDetailMetrics
-  const hrIndex = metricDescriptors.findIndex(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (desc: any) => desc.key === 'directHeartRate'
-  );
-  const timestampIndex = metricDescriptors.findIndex(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (desc: any) => desc.key === 'directTimestamp'
-  );
+  const hrDesc = (
+    activity.descriptors as Record<string, unknown>[] | undefined
+  )?.find((desc: Record<string, unknown>) => desc.key === 'directHeartRate');
+  const tsDesc = (
+    activity.descriptors as Record<string, unknown>[] | undefined
+  )?.find((desc: Record<string, unknown>) => desc.key === 'directTimestamp');
+  const hrIndex = hrDesc ? (hrDesc.index as number) : -1;
+  const timestampIndex = tsDesc ? (tsDesc.index as number) : -1;
   let workoutPreset = await workoutPresetRepository.getWorkoutPresetByName(
     userId,
     workoutName
@@ -270,19 +313,24 @@ async function processGarminWorkoutSession(
     user_id: userId,
     workout_preset_id: workoutPreset.id,
     name: workoutName,
-    description: activity.notes || `Logged session of ${workoutName}`,
+    description:
+      (activity.notes as string) || `Logged session of ${workoutName}`,
     entry_date: entryDate,
     created_by_user_id: userId,
     notes: `Garmin Workout Session: ${workoutName}`,
     source: 'garmin', // Add source to exercise_preset_entries
-    steps: activity.steps || activity.totalSteps || activity.stepCount || 0,
+    steps:
+      (activity.steps as number) ||
+      (activity.totalSteps as number) ||
+      (activity.stepCount as number) ||
+      0,
   };
   const newExercisePresetEntry =
-    await exercisePresetEntryRepository.createExercisePresetEntry(
+    (await exercisePresetEntryRepository.createExercisePresetEntry(
       userId,
       exercisePresetEntryData,
       userId
-    );
+    )) as Record<string, unknown>;
   await activityDetailsRepository.createActivityDetail(userId, {
     exercise_preset_entry_id: newExercisePresetEntry.id, // Link to preset entry
     provider_name: 'garmin',
@@ -291,8 +339,8 @@ async function processGarminWorkoutSession(
     created_by_user_id: userId,
   });
   if (exercise_sets && Array.isArray(exercise_sets.exerciseSets)) {
-    const groupedExercises = [];
-    let currentGroup = null;
+    const groupedExercises: ExerciseGroup[] = [];
+    let currentGroup: ExerciseGroup | null = null;
     let totalActiveDurationSeconds = 0;
     const activeSetsWithStartAndEndTimes = []; // Store active sets with their calculated start and end times
     // First pass to group sets by exercise and calculate total active duration
@@ -301,13 +349,21 @@ async function processGarminWorkoutSession(
       // We need to look further ahead to find the next ACTIVE set for rest time calculation
       let garminExerciseName = null;
       let garminCategory = 'Uncategorized';
-      if (garminSet.exercises && garminSet.exercises.length > 0) {
+      if (
+        garminSet.exercises &&
+        (garminSet.exercises as unknown[]).length > 0
+      ) {
         garminExerciseName =
-          garminSet.exercises[0].name || garminSet.exercises[0].category;
-        garminCategory = garminSet.exercises[0].category || 'Uncategorized';
+          ((garminSet.exercises as Record<string, unknown>[])[0]
+            .name as string) ||
+          ((garminSet.exercises as Record<string, unknown>[])[0]
+            .category as string);
+        garminCategory =
+          ((garminSet.exercises as Record<string, unknown>[])[0]
+            .category as string) || 'Uncategorized';
       } else if (garminSet.category) {
-        garminExerciseName = garminSet.category;
-        garminCategory = garminSet.category;
+        garminExerciseName = garminSet.category as string;
+        garminCategory = garminSet.category as string;
       }
       // If we still don't have an exercise name (e.g. an unnamed REST or WARM_UP set),
       // inherit it from the current group to prevent breaking the exercise into multiple 1-set entries.
@@ -326,8 +382,7 @@ async function processGarminWorkoutSession(
       if (garminExerciseName) {
         const exerciseName: string = (garminExerciseName as string)
           .replace(/_/g, ' ')
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .replace(/\b\w/g, (l: any) => l.toUpperCase());
+          .replace(/\b\w/g, (l: string) => l.toUpperCase());
         const stepIndex = garminSet.stepIndex || garminSet.wktStepId || null;
         if (
           !currentGroup ||
@@ -354,39 +409,44 @@ async function processGarminWorkoutSession(
           WARM_UP: 'Warm-up Set',
           // Add other mappings as needed
         };
-        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
-        const setType = setTypeMapping[garminSet.setType] || 'Working Set'; // Default to 'Working Set' if not mapped
+        const setType =
+          (setTypeMapping as Record<string, string>)[garminSet.setType] ||
+          'Working Set'; // Default to 'Working Set' if not mapped
         const durationSeconds = garminSet.duration
-          ? Math.round(garminSet.duration)
+          ? Math.round(Number(garminSet.duration))
           : 0;
         const weightKg = garminSet.weight
-          ? parseFloat((garminSet.weight * 0.001).toFixed(2))
+          ? parseFloat((Number(garminSet.weight) * 0.001).toFixed(2))
           : 0; // Assuming weight is in grams, convert to kg and round to 2 decimal places
         if (garminSet.setType !== 'REST') {
           const currentSet = {
             set_number: currentGroup.sets.length + 1, // Incremental set number
             set_type: setType,
-            reps: Math.round(garminSet.repetitionCount || 0),
+            reps: Math.round(Number(garminSet.repetitionCount || 0)),
             weight: weightKg,
             duration: Math.round(durationSeconds / 60),
             rest_time: 0, // Default rest time
             notes: garminSet.notes || '',
           };
-          // @ts-expect-error TS(2345): Argument of type '{ set_number: number; set_type: ... Remove this comment to see the full error message
           currentGroup.sets.push(currentSet);
           if (garminSet.setType === 'ACTIVE') {
             currentGroup.totalDuration += durationSeconds;
             currentGroup.activeDuration += durationSeconds;
             totalActiveDurationSeconds += durationSeconds;
-            const setStartTime = new Date(garminSet.startTime).getTime(); // Convert to milliseconds
+            const setStartTime = new Date(
+              garminSet.startTime as string | number | Date
+            ).getTime(); // Convert to milliseconds
             const setEndTime = setStartTime + durationSeconds * 1000;
             if (
               !currentGroup.startTime ||
-              setStartTime < currentGroup.startTime
+              setStartTime < (currentGroup.startTime as number)
             ) {
               currentGroup.startTime = setStartTime;
             }
-            if (!currentGroup.endTime || setEndTime > currentGroup.endTime) {
+            if (
+              !currentGroup.endTime ||
+              setEndTime > (currentGroup.endTime as number)
+            ) {
               currentGroup.endTime = setEndTime;
             }
             // Store active set details for later rest time calculation
@@ -488,20 +548,24 @@ async function processGarminWorkoutSession(
       if (totalActiveDurationSeconds > 0 && activity.active_calories) {
         perExerciseCaloriesBurned =
           (activeDuration / totalActiveDurationSeconds) *
-          activity.active_calories;
+          ((activity.active_calories as number) || 0);
       }
-      let perExerciseAvgHeartRate = null;
+      let perExerciseAvgHeartRate: number | null = null;
       if (hrIndex !== -1 && timestampIndex !== -1 && startTime && endTime) {
         let heartRateSum = 0;
         let heartRateCount = 0;
-        for (const metric of activityDetailMetrics) {
-          const metricTimestamp = metric.metrics[timestampIndex];
-          const heartRate = metric.metrics[hrIndex];
+        for (const metric of activityDetailMetrics as Record<
+          string,
+          unknown
+        >[]) {
+          const metrics = metric.metrics as number[];
+          const metricTimestamp = metrics[timestampIndex];
+          const heartRate = metrics[hrIndex];
           // Garmin timestamps are in milliseconds, convert to seconds for comparison with startTime/endTime
           // startTime and endTime are already in milliseconds
           if (
-            metricTimestamp >= startTime &&
-            metricTimestamp <= endTime &&
+            metricTimestamp >= (startTime as number) &&
+            metricTimestamp <= (endTime as number) &&
             heartRate !== undefined &&
             heartRate !== null
           ) {
@@ -522,24 +586,27 @@ async function processGarminWorkoutSession(
         sets: sets,
         exercise_preset_entry_id: newExercisePresetEntry.id, // Link to preset entry
         avg_heart_rate: perExerciseAvgHeartRate
-          ? Math.round(perExerciseAvgHeartRate)
+          ? Math.round(perExerciseAvgHeartRate as number)
           : null, // Round to nearest whole number or keep null
         source_id: activity.activityId
-          ? `${activity.activityId}_${exerciseSortOrder}`
+          ? `${activity.activityId as string}_${exerciseSortOrder}`
           : null,
-        steps: activity.steps || activity.totalSteps || activity.stepCount || 0,
+        steps:
+          (activity.steps as number) ||
+          (activity.totalSteps as number) ||
+          (activity.stepCount as number) ||
+          0,
       };
       await exerciseEntryRepository.createExerciseEntry(
         userId,
         { ...exerciseEntryData, sort_order: exerciseSortOrder },
         userId,
         'garmin',
-        newExercisePresetEntry.id
+        newExercisePresetEntry.id as string
       );
-      const existingExerciseInPreset = workoutPreset.exercises?.find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (e: any) => e.exercise_id === exercise.id
-      );
+      const existingExerciseInPreset = (
+        workoutPreset.exercises as Record<string, unknown>[] | undefined
+      )?.find((e: Record<string, unknown>) => e.exercise_id === exercise.id);
       if (isNewWorkoutPreset || !existingExerciseInPreset) {
         await workoutPresetRepository.addExerciseToWorkoutPreset(
           userId,
@@ -559,42 +626,45 @@ async function processGarminWorkoutDefinition(
   userId: string,
   workoutData: GarminData
 ) {
-  const workoutName =
-    (workoutData as any).workoutName || 'Garmin Workout Definition';
+  const workoutName = workoutData.workoutName || 'Garmin Workout Definition';
   const description =
     workoutData.description || `Workout definition from Garmin: ${workoutName}`;
-  let workoutPreset = await workoutPresetRepository.getWorkoutPresetByName(
+  let workoutPreset = (await workoutPresetRepository.getWorkoutPresetByName(
     userId,
     workoutName
-  );
+  )) as WorkoutPreset | null;
   if (!workoutPreset) {
-    workoutPreset = await workoutPresetRepository.createWorkoutPreset({
+    workoutPreset = (await workoutPresetRepository.createWorkoutPreset({
       user_id: userId,
       name: workoutName,
       description: description,
       is_public: false,
-    });
+    })) as WorkoutPreset;
   }
   if (
     workoutData.workoutSegments &&
     Array.isArray(workoutData.workoutSegments)
   ) {
     let exerciseSortOrder = 0;
-    for (const segment of workoutData.workoutSegments) {
+    for (const segment of workoutData.workoutSegments as Record<
+      string,
+      unknown
+    >[]) {
       if (segment.workoutSteps && Array.isArray(segment.workoutSteps)) {
-        for (const step of segment.workoutSteps) {
+        for (const step of segment.workoutSteps as Record<string, unknown>[]) {
           const stepsToProcess =
-            step.type === 'RepeatGroupDTO' ? step.workoutSteps : [step];
+            step.type === 'RepeatGroupDTO'
+              ? (step.workoutSteps as Record<string, unknown>[])
+              : [step];
           for (const individualStep of stepsToProcess) {
             if (
               individualStep.type === 'ExecutableStepDTO' &&
               individualStep.exerciseName
             ) {
-              const garminExerciseName = individualStep.exerciseName;
+              const garminExerciseName = individualStep.exerciseName as string;
               const exerciseName = garminExerciseName
                 .replace(/_/g, ' ')
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .replace(/\b\w/g, (l: any) => l.toUpperCase());
+                .replace(/\b\w/g, (l: string) => l.toUpperCase());
               let exercise =
                 await exerciseRepository.findExerciseByNameAndUserId(
                   exerciseName,
@@ -604,23 +674,27 @@ async function processGarminWorkoutDefinition(
                 exercise = await exerciseRepository.createExercise({
                   user_id: userId,
                   name: exerciseName,
-                  category: individualStep.category || 'Uncategorized',
+                  category:
+                    (individualStep.category as string) || 'Uncategorized',
                   source: 'garmin',
                   is_custom: true,
                   shared_with_public: false,
                 });
               }
+              const stepType = individualStep.stepType as
+                | Record<string, unknown>
+                | undefined;
               const sets = [
                 {
                   set_number: 1,
-                  set_type: individualStep.stepType?.stepTypeKey,
-                  reps: individualStep.endConditionValue || 0,
+                  set_type: stepType?.stepTypeKey as string,
+                  reps: (individualStep.endConditionValue as number) || 0,
                   weight: individualStep.weightValue
-                    ? individualStep.weightValue * 0.453592
+                    ? (individualStep.weightValue as number) * 0.453592
                     : 0, // Assuming weight is in pounds, convert to kg
                   duration: 0,
                   rest_time: 0,
-                  notes: individualStep.description || '',
+                  notes: (individualStep.description as string) || '',
                 },
               ];
               await workoutPresetRepository.addExerciseToWorkoutPreset(
@@ -646,11 +720,14 @@ async function processGarminSimpleActivity(
   timezone = 'UTC'
 ) {
   const { activity } = activityData;
-  const exerciseName = activity.activityType?.typeKey
-    ? activity.activityType.typeKey
+  const activityType = activity.activityType as
+    | Record<string, unknown>
+    | undefined;
+  const activityTypeKey = activityType?.typeKey as string | undefined;
+  const exerciseName = activityTypeKey
+    ? activityTypeKey
         .replace(/_/g, ' ')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .replace(/\b\w/g, (l: any) => l.toUpperCase())
+        .replace(/\b\w/g, (l: string) => l.toUpperCase())
     : 'Garmin Activity';
   let exercise = await exerciseRepository.findExerciseByNameAndUserId(
     exerciseName,
@@ -660,26 +737,35 @@ async function processGarminSimpleActivity(
     exercise = await exerciseRepository.createExercise({
       user_id: userId,
       name: exerciseName,
-      category: activity.activityType?.typeKey || 'Uncategorized',
+      category: activityTypeKey || 'Uncategorized',
       source: 'garmin',
       is_custom: true,
       shared_with_public: false,
     });
   }
-  const entryDate = activity.startTimeLocal
-    ? activity.startTimeLocal.substring(0, 10)
+  const entryDate = (activity.startTimeLocal as string)
+    ? (activity.startTimeLocal as string).substring(0, 10)
     : todayInZone(timezone);
   const exerciseEntryData = {
     exercise_id: exercise.id,
-    duration_minutes: activity.duration || 0,
-    calories_burned: activity.active_calories || 0,
+    duration_minutes: ((activity.duration as number) || 0) / 60,
+    calories_burned: Math.round(
+      ((activity.active_calories as number) || 0) +
+        ((activity.bmr_calories as number) || 0)
+    ),
     entry_date: entryDate,
-    notes: `Garmin Activity: ${activity.activityName} (${activity.activityType?.typeKey})`,
-    distance: activity.distance,
+    notes: `Garmin Activity: ${activity.activityName as string} (${activityTypeKey || 'Garmin'})`,
+    distance: activity.distance as number | undefined,
     avg_heart_rate:
-      activity.averageHR || activity.averageHeartRateInBeatsPerMinute || null,
-    source_id: activity.activityId?.toString() ?? null,
-    steps: activity.steps || activity.totalSteps || activity.stepCount || 0,
+      (activity.averageHR as number) ||
+      (activity.averageHeartRateInBeatsPerMinute as number) ||
+      null,
+    source_id: (activity.activityId as string | number)?.toString() ?? null,
+    steps:
+      (activity.steps as number) ||
+      (activity.totalSteps as number) ||
+      (activity.stepCount as number) ||
+      0,
   };
   const newEntry = await exerciseEntryRepository.createExerciseEntry(
     userId,
