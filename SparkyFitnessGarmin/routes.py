@@ -1408,6 +1408,16 @@ async def get_health_and_wellness(request_data: HealthAndWellnessRequest):
         raise HTTPException(status_code=429, detail=f"Garmin rate limit hit: {e}")
     except GarminConnectConnectionError as e:
         logger.exception(e); raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
+    except (json.JSONDecodeError, ValueError) as e:
+        # Garmin API returned empty/invalid body for some metric — return partial data
+        logger.warning(f"Garmin returned empty/invalid JSON for health data ({start_date}–{end_date}): {e}. Returning partial data.")
+        return {
+            "user_id": user_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "data": {},
+            "new_tokens": None,
+        }
     except Exception as e:
         logger.exception(e)
         raise HTTPException(
@@ -1455,7 +1465,11 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
         logger.info(
             f"Fetching activities for user {user_id} from {start_date} to {end_date} with activity type {activity_type}"
         )
-        activities = garmin.get_activities_by_date(start_date, end_date, activity_type)
+        try:
+            activities = garmin.get_activities_by_date(start_date, end_date, activity_type)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(f"Garmin returned empty/invalid body for activities ({start_date}–{end_date}), treating as no activities.")
+            activities = []
         logger.debug(f"Raw activities retrieved: {activities}")
 
         # Ensure activityName is set from typeKey if it's missing
@@ -1554,8 +1568,12 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
                 detailed_activities.append({"activity": activity})
 
         logger.info(f"Fetching workouts for user {user_id}")
-        workouts = garmin.get_workouts()
-        logger.debug("Raw workouts retrieved: %s", workouts)
+        try:
+            workouts = garmin.get_workouts()
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(f"Garmin returned empty/invalid body for workouts, treating as no workouts.")
+            workouts = []
+        logger.debug("Raw workouts count: %d", len(workouts))
         detailed_workouts = []
         for workout in workouts:
             workout_id = workout["workoutId"]
@@ -1574,7 +1592,8 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
         cleaned_workouts = clean_garmin_data(detailed_workouts)
 
         logger.info(
-            f"Successfully retrieved and cleaned activities and workouts for user {user_id} from {start_date} to {end_date}. Activities: {cleaned_activities}, Workouts: {cleaned_workouts}"
+            f"Successfully retrieved activities and workouts for user {user_id} from {start_date} to {end_date}. "
+            f"Activities count: {len(cleaned_activities)}, Workouts count: {len(cleaned_workouts)}"
         )
 
         # Save data to local file if capture is enabled
@@ -1607,6 +1626,17 @@ async def get_activities_and_workouts(request_data: ActivitiesAndWorkoutsRequest
         raise HTTPException(status_code=429, detail=f"Garmin rate limit hit: {e}")
     except GarminConnectConnectionError as e:
         logger.exception(e); raise HTTPException(status_code=500, detail=f"Garmin connection error: {e}")
+    except (json.JSONDecodeError, ValueError) as e:
+        # Garmin API returned empty/invalid body — return empty result
+        logger.warning(f"Garmin returned empty/invalid JSON for activities ({start_date}–{end_date}): {e}. Returning empty.")
+        return {
+            "user_id": user_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "activities": [],
+            "workouts": [],
+            "new_tokens": None,
+        }
     except Exception as e:
         logger.exception(e)
         raise HTTPException(
