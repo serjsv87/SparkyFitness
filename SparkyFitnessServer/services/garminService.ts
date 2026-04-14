@@ -879,8 +879,8 @@ async function syncGarminData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   userId: any,
   syncType = 'manual',
-  customStartDate = null,
-  customEndDate = null
+  customStartDate: string | null = null,
+  customEndDate: string | null = null
 ) {
   let startDate, endDate;
   const tz = await loadUserTimezone(userId);

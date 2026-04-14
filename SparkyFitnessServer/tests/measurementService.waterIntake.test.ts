@@ -207,7 +207,6 @@ describe('Measurement Service - Water Intake', () => {
       measurementRepository.deleteWaterIntake.mockResolvedValue(true); // Repository returns true for success
       const result = await measurementService.deleteWaterIntake(
         mockUserId,
-        mockUserId,
         mockEntryId
       );
       expect(
@@ -225,11 +224,7 @@ describe('Measurement Service - Water Intake', () => {
       // @ts-expect-error TS(2339): Property 'mockResolvedValue' does not exist on typ... Remove this comment to see the full error message
       measurementRepository.getWaterIntakeEntryOwnerId.mockResolvedValue(null);
       await expect(
-        measurementService.deleteWaterIntake(
-          mockUserId,
-          mockUserId,
-          mockEntryId
-        )
+        measurementService.deleteWaterIntake(mockUserId, mockEntryId)
       ).rejects.toThrow('Water intake entry not found.');
     });
     it('should throw 403 when user does not own the entry', async () => {
@@ -241,11 +236,7 @@ describe('Measurement Service - Water Intake', () => {
         differentOwnerId
       );
       await expect(
-        measurementService.deleteWaterIntake(
-          mockUserId,
-          mockUserId,
-          mockEntryId
-        )
+        measurementService.deleteWaterIntake(mockUserId, mockEntryId)
       ).rejects.toThrow(
         'Forbidden: You do not have permission to delete this water intake entry.'
       );

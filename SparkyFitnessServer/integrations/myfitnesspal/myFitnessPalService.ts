@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { log } from '../../config/logging';
-import { getExternalDataProviderByUserIdAndProviderName } from '../../models/externalProviderRepository';
+import { log } from '../../config/logging.js';
+import { getExternalDataProviderByUserIdAndProviderName } from '../../models/externalProviderRepository.js';
 
 /** Maximum concurrent DELETE requests during idempotency cleanup */
 const DELETE_CONCURRENCY = 5;

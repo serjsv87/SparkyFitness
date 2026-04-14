@@ -123,7 +123,6 @@ const DEFAULT_UNITS_BY_HEALTH_TYPE = {
   cycling_power_avg: 'W',
   cycling_cadence_min: 'rpm',
   cycling_cadence_avg: 'rpm',
-  cycling_cadence_avg: 'rpm',
   // Chunk 4: Walking / mobility metrics
   walking_speed_min: 'm/s',
   walking_speed_max: 'm/s',
@@ -804,14 +803,15 @@ async function processHealthData(
   }
 
   // Finally, trigger MFP sync for all affected dates
-  // @ts-expect-error TS(7006): Parameter 'date' implicitly has an 'any' type.
   for (const date of affectedDates) {
-    mfpSyncService.syncDailyNutritionToMFP(userId, date).catch((err: any) => {
-      log(
-        'error',
-        `Background MFP sync failed for user ${userId} on ${date}: ${err.message}`
-      );
-    });
+    mfpSyncService
+      .syncDailyNutritionToMFP(userId, date as string)
+      .catch((err: any) => {
+        log(
+          'error',
+          `Background MFP sync failed for user ${userId} on ${date}: ${err.message}`
+        );
+      });
   }
 
   if (errors.length > 0) {
@@ -1092,14 +1092,15 @@ async function processMobileHealthData(
   }
 
   // Finally, trigger MFP sync for all affected dates
-  // @ts-expect-error TS(7006): Parameter 'date' implicitly has an 'any' type.
   for (const date of affectedDates) {
-    mfpSyncService.syncDailyNutritionToMFP(userId, date).catch((err: any) => {
-      log(
-        'error',
-        `Background MFP sync failed for user ${userId} on ${date}: ${err.message}`
-      );
-    });
+    mfpSyncService
+      .syncDailyNutritionToMFP(userId, date as string)
+      .catch((err: any) => {
+        log(
+          'error',
+          `Background MFP sync failed for user ${userId} on ${date}: ${err.message}`
+        );
+      });
   }
 
   if (errors.length > 0) {
@@ -1396,7 +1397,7 @@ async function deleteWaterIntake(authenticatedUserId: any, id: any) {
         'Forbidden: You do not have permission to delete this water intake entry.'
       );
     }
-    const success = await measurementRepository.deleteWaterIntakeEntry(
+    const success = await measurementRepository.deleteWaterIntake(
       id,
       authenticatedUserId
     );
@@ -1502,10 +1503,9 @@ async function getCustomCategories(
 }
 async function getCustomCategoryById(authenticatedUserId: any, id: any) {
   try {
-    const category = await measurementRepository.getCustomCategoryById(
-      id,
-      authenticatedUserId
-    );
+    const categories =
+      await measurementRepository.getCustomCategories(authenticatedUserId);
+    const category = categories.find((c: any) => c.id === id);
     if (!category) {
       throw new Error('Custom category not found.');
     }
@@ -1554,17 +1554,12 @@ async function updateCustomCategory(
   categoryData: any
 ) {
   try {
-    const category = await measurementRepository.getCustomCategoryById(
+    const ownerId = await measurementRepository.getCustomCategoryOwnerId(
       categoryId,
       authenticatedUserId
     );
-    if (!category) {
+    if (!ownerId) {
       throw new Error('Custom category not found.');
-    }
-    if (category.user_id !== authenticatedUserId) {
-      throw new Error(
-        'Forbidden: You do not have permission to update this custom category.'
-      );
     }
     return await measurementRepository.updateCustomCategory(
       categoryId,
@@ -1583,17 +1578,12 @@ async function updateCustomCategory(
 }
 async function deleteCustomCategory(authenticatedUserId: any, categoryId: any) {
   try {
-    const category = await measurementRepository.getCustomCategoryById(
+    const ownerId = await measurementRepository.getCustomCategoryOwnerId(
       categoryId,
       authenticatedUserId
     );
-    if (!category) {
+    if (!ownerId) {
       throw new Error('Custom category not found.');
-    }
-    if (category.user_id !== authenticatedUserId) {
-      throw new Error(
-        'Forbidden: You do not have permission to delete this custom category.'
-      );
     }
     const success = await measurementRepository.deleteCustomCategory(
       categoryId,
@@ -1621,7 +1611,7 @@ async function getCustomMeasurementsByDate(
   date: any
 ) {
   try {
-    return await measurementRepository.getCustomMeasurementsByDate(
+    return await measurementRepository.getCustomMeasurementEntriesByDate(
       targetUserId,
       date
     );
@@ -1643,20 +1633,27 @@ async function createCustomMeasurement(
   measurementData: any
 ) {
   try {
-    const category = await measurementRepository.getCustomCategoryById(
-      measurementData.custom_category_id,
-      authenticatedUserId
+    const category = await getCustomCategoryById(
+      authenticatedUserId,
+      measurementData.custom_category_id
     );
     if (!category) {
       throw new Error('Custom category not found.');
     }
-    const data = {
-      ...measurementData,
-      user_id: measurementData.user_id || authenticatedUserId,
-      created_by_user_id: actingUserId,
-      frequency: category.frequency,
-    };
-    return await measurementRepository.createCustomMeasurement(data);
+    const userId = measurementData.user_id || authenticatedUserId;
+    return await measurementRepository.upsertCustomMeasurement(
+      userId,
+      actingUserId,
+      measurementData.custom_category_id,
+      measurementData.value,
+      measurementData.entry_date,
+      measurementData.entry_hour ?? 0,
+      measurementData.entry_timestamp ??
+        new Date(measurementData.entry_date).toISOString(),
+      measurementData.notes ?? null,
+      category.frequency,
+      measurementData.source ?? 'manual'
+    );
   } catch (error) {
     log(
       'error',
@@ -1678,11 +1675,18 @@ async function updateCustomMeasurement(
 ) {
   try {
     // RLS in measurementRepository will handle checking if the measurement belongs to the user
-    return await measurementRepository.updateCustomMeasurement(
-      measurementId,
+    return await measurementRepository.upsertCustomMeasurement(
       authenticatedUserId,
       actingUserId,
-      measurementData
+      measurementData.custom_category_id ?? measurementData.category_id,
+      measurementData.value,
+      measurementData.entry_date,
+      measurementData.entry_hour ?? 0,
+      measurementData.entry_timestamp ??
+        new Date(measurementData.entry_date).toISOString(),
+      measurementData.notes ?? null,
+      measurementData.frequency ?? 'Daily',
+      measurementData.source ?? 'manual'
     );
   } catch (error) {
     log(
@@ -1749,16 +1753,16 @@ async function processSleepEntry(
         entryDate
       );
     }
-    const result = await sleepRepository.createSleepEntry(
+    const result = await sleepRepository.upsertSleepEntry(
       userId,
+      actingUserId,
       {
         ...sleepData,
         bedtime,
         wake_time: wakeTime,
         entry_date: entryDate,
         source,
-      },
-      actingUserId
+      }
     );
     return result;
   } catch (error) {
@@ -1779,10 +1783,12 @@ async function getSleepEntryByDate(
   date: any
 ) {
   try {
-    const sleepEntries = await sleepRepository.getSleepEntriesByDate(
-      targetUserId,
-      date
-    );
+    const sleepEntries =
+      await sleepRepository.getSleepEntriesByUserIdAndDateRange(
+        targetUserId,
+        date,
+        date
+      );
     // Merge logic: return the one with the highest duration or prioritize manual?
     // Usually we just return the most recent or summarized one.
     // For now, return the first one found or null.
@@ -1826,12 +1832,11 @@ async function getMeasurementHistory(
   days: any
 ) {
   try {
-    const history = await measurementRepository.getMeasurementHistory(
+    const latest = await measurementRepository.getMostRecentMeasurement(
       targetUserId,
-      type,
-      days
+      type
     );
-    return history;
+    return latest ? [latest] : [];
   } catch (error) {
     log(
       'error',
@@ -1844,7 +1849,7 @@ async function getMeasurementHistory(
 async function getLatestWeight(authenticatedUserId: any, targetUserId: any) {
   try {
     const latestWeight =
-      await measurementRepository.getLatestWeight(targetUserId);
+      await measurementRepository.getLatestMeasurement(targetUserId);
     return latestWeight;
   } catch (error) {
     log(
@@ -1857,9 +1862,9 @@ async function getLatestWeight(authenticatedUserId: any, targetUserId: any) {
 }
 async function getCheckInEntryById(authenticatedUserId: any, id: any) {
   try {
-    return await measurementRepository.getCheckInEntryById(
-      id,
-      authenticatedUserId
+    return await measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate(
+      authenticatedUserId,
+      new Date().toISOString().split('T')[0]
     );
   } catch (error) {
     log(
@@ -1881,10 +1886,10 @@ async function updateCheckIn(
   updateData: any
 ) {
   try {
-    return await measurementRepository.updateCheckIn(
-      id,
+    return await measurementRepository.updateCheckInMeasurements(
       authenticatedUserId,
       actingUserId,
+      id,
       updateData
     );
   } catch (error) {
@@ -1898,7 +1903,7 @@ async function updateCheckIn(
 }
 async function deleteCheckIn(authenticatedUserId: any, id: any) {
   try {
-    const success = await measurementRepository.deleteCheckIn(
+    const success = await measurementRepository.deleteCheckInMeasurements(
       id,
       authenticatedUserId
     );
@@ -1923,14 +1928,11 @@ async function getTdeeInputs(authenticatedUserId: any, targetUserId: any) {
     const age = userAge(user.date_of_birth);
     // 2. Fetch latest weight from check-ins
     const latestWeight =
-      await measurementRepository.getLatestWeight(targetUserId);
+      await measurementRepository.getLatestMeasurement(targetUserId);
     // 3. Fetch height from latest check-in or profile (prefer check-in?)
-    const latestHeightRecord =
-      await measurementRepository.getMeasurementHistory(
-        targetUserId,
-        'height',
-        365
-      );
+    const latestHeightRecord = await measurementRepository
+      .getMostRecentMeasurement(targetUserId, 'height')
+      .then((r: any) => (r ? [r] : []));
     const height =
       latestHeightRecord.length > 0
         ? latestHeightRecord[0].value
@@ -1961,11 +1963,16 @@ async function getBulkMeasurementHistory(
     if (!Array.isArray(metricTypes)) {
       throw new Error('metricTypes must be an array.');
     }
-    const history = await measurementRepository.getBulkMeasurementHistory(
-      targetUserId,
-      metricTypes,
-      days
-    );
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0];
+    const history =
+      await measurementRepository.getCheckInMeasurementsByDateRange(
+        targetUserId,
+        startDate,
+        endDate
+      );
     return history;
   } catch (error) {
     log(
@@ -2172,6 +2179,221 @@ async function calculateSleepScore(
   return Math.round(Math.max(0, Math.min(score, maxScore)));
 }
 
+async function upsertCheckInMeasurements(
+  authenticatedUserId: any,
+  targetUserId: any,
+  date: any,
+  data: any
+) {
+  try {
+    return await measurementRepository.upsertCheckInMeasurements(
+      targetUserId,
+      date,
+      data,
+      authenticatedUserId
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error upserting check-in measurements for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function getLatestCheckInMeasurementsOnOrBeforeDate(
+  authenticatedUserId: any,
+  targetUserId: any,
+  date: any
+) {
+  try {
+    return await measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate(
+      targetUserId,
+      date
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error fetching latest check-in for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function updateCheckInMeasurements(
+  authenticatedUserId: any,
+  targetUserId: any,
+  date: any,
+  data: any
+) {
+  try {
+    return await measurementRepository.updateCheckInMeasurements(
+      targetUserId,
+      authenticatedUserId,
+      date,
+      data
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error updating check-in measurements for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function deleteCheckInMeasurements(authenticatedUserId: any, id: any) {
+  try {
+    return await measurementRepository.deleteCheckInMeasurements(
+      id,
+      authenticatedUserId
+    );
+  } catch (error) {
+    log('error', `Error deleting check-in measurement ${id}:`, error);
+    throw error;
+  }
+}
+
+async function deleteCustomMeasurementEntry(
+  authenticatedUserId: any,
+  entryId: any
+) {
+  // Alias for deleteCustomMeasurement
+  return deleteCustomMeasurement(authenticatedUserId, entryId);
+}
+
+async function getCustomMeasurementEntriesByDate(
+  authenticatedUserId: any,
+  targetUserId: any,
+  date: any
+) {
+  try {
+    return await measurementRepository.getCustomMeasurementEntriesByDate(
+      targetUserId,
+      date
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error fetching custom measurements by date for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function getCustomMeasurementEntries(
+  authenticatedUserId: any,
+  targetUserId: any,
+  categoryId: any,
+  limit?: any,
+  offset?: any
+) {
+  try {
+    return await measurementRepository.getCustomMeasurementEntries(
+      targetUserId,
+      categoryId,
+      limit,
+      offset
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error fetching custom measurement entries for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function getCustomMeasurementsByDateRange(
+  authenticatedUserId: any,
+  targetUserId: any,
+  categoryId: any,
+  startDate: any,
+  endDate: any
+) {
+  try {
+    return await measurementRepository.getCustomMeasurementsByDateRange(
+      targetUserId,
+      categoryId,
+      startDate,
+      endDate
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error fetching custom measurements by date range for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function getMostRecentMeasurement(
+  authenticatedUserId: any,
+  targetUserId: any,
+  measurementType: any
+) {
+  try {
+    return await measurementRepository.getMostRecentMeasurement(
+      targetUserId,
+      measurementType
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error fetching most recent measurement for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function getSleepEntriesByUserIdAndDateRange(
+  authenticatedUserId: any,
+  targetUserId: any,
+  startDate: any,
+  endDate: any
+) {
+  try {
+    return await sleepRepository.getSleepEntriesByUserIdAndDateRange(
+      targetUserId,
+      startDate,
+      endDate
+    );
+  } catch (error) {
+    log(
+      'error',
+      `Error fetching sleep entries for user ${targetUserId}:`,
+      error
+    );
+    throw error;
+  }
+}
+
+async function updateSleepEntry(
+  authenticatedUserId: any,
+  id: any,
+  actingUserId: any,
+  data: any
+) {
+  try {
+    return await sleepRepository.updateSleepEntry(
+      authenticatedUserId,
+      id,
+      actingUserId,
+      data
+    );
+  } catch (error) {
+    log('error', `Error updating sleep entry ${id}:`, error);
+    throw error;
+  }
+}
+
 export {
   resolveHealthEntryDate,
   processHealthData,
@@ -2184,6 +2406,17 @@ export {
   deleteWaterIntake,
   getCheckInMeasurements,
   getCheckInMeasurementsByDateRange,
+  upsertCheckInMeasurements,
+  getLatestCheckInMeasurementsOnOrBeforeDate,
+  updateCheckInMeasurements,
+  deleteCheckInMeasurements,
+  deleteCustomMeasurementEntry,
+  getCustomMeasurementEntriesByDate,
+  getCustomMeasurementEntries,
+  getCustomMeasurementsByDateRange,
+  getMostRecentMeasurement,
+  getSleepEntriesByUserIdAndDateRange,
+  updateSleepEntry,
   getCustomCategories,
   getCustomCategoryById,
   createCustomCategory,
@@ -2219,6 +2452,17 @@ export default {
   deleteWaterIntake,
   getCheckInMeasurements,
   getCheckInMeasurementsByDateRange,
+  upsertCheckInMeasurements,
+  getLatestCheckInMeasurementsOnOrBeforeDate,
+  updateCheckInMeasurements,
+  deleteCheckInMeasurements,
+  deleteCustomMeasurementEntry,
+  getCustomMeasurementEntriesByDate,
+  getCustomMeasurementEntries,
+  getCustomMeasurementsByDateRange,
+  getMostRecentMeasurement,
+  getSleepEntriesByUserIdAndDateRange,
+  updateSleepEntry,
   getCustomCategories,
   getCustomCategoryById,
   createCustomCategory,

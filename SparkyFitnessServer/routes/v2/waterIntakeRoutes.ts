@@ -497,12 +497,7 @@ const deleteWaterIntakeHandler: RequestHandler = async (req, res, next) => {
       return;
     }
     const { id } = paramResult.data;
-    const result = await measurementService.deleteWaterIntake(
-      req.userId,
-
-      req.originalUserId || req.userId,
-      id
-    );
+    const result = await measurementService.deleteWaterIntake(req.userId, id);
     res.status(200).json(result);
   } catch (error: unknown) {
     if (error instanceof Error) {

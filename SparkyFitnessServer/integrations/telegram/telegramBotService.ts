@@ -14,9 +14,7 @@ import {
   TelegramUser,
   getTranslations,
   getMainMenuKeyboard,
-  getDiaryMenuKeyboard,
 } from './telegramTranslations.js';
-import * as bmrService from '../../services/bmrService.js';
 import { loadUserTimezone } from '../../utils/timezoneLoader.js';
 import { todayInZone, addDays, instantToDay } from '@workspace/shared';
 
@@ -891,9 +889,8 @@ class TelegramBotService {
 
       text += `<b>Всього:</b> ${Math.round(totalCals)} ккал`;
 
-      const t = getTranslations(user.language);
       const buttons: TelegramBot.InlineKeyboardButton[][] = [];
-      for (const [type, items] of Object.entries(grouped)) {
+      for (const [, items] of Object.entries(grouped)) {
         if (items.length > 0) {
           items.forEach((i) => {
             buttons.push([

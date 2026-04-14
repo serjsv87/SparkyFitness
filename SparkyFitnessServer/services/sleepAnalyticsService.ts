@@ -91,7 +91,6 @@ async function getSleepAnalytics(userId: any, startDate: any, endDate: any) {
         },
         entry.stage_events,
         age,
-        // @ts-expect-error TS(2554): Expected 2-3 arguments, but got 4.
         gender
       );
       // For simplicity, if multiple entries for a day, take the average or latest score.

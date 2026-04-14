@@ -198,13 +198,14 @@ describe('chatService', () => {
     });
     it('should save chat history', async () => {
       const historyData = { message: 'new message' };
-      // @ts-expect-error TS(2339): Property 'mockResolvedValue' does not exist on typ... Remove this comment to see the full error message
-      chatRepository.saveChatHistory.mockResolvedValue();
+      (chatRepository as any).saveChatHistory = vi
+        .fn()
+        .mockResolvedValue(undefined);
       const result = await chatService.saveSparkyChatHistory(
         mockUserId,
         historyData
       );
-      expect(chatRepository.saveChatHistory).toHaveBeenCalledWith({
+      expect((chatRepository as any).saveChatHistory).toHaveBeenCalledWith({
         ...historyData,
         user_id: mockUserId,
       });

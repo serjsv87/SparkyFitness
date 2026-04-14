@@ -442,7 +442,6 @@ router.delete(
     }
     const { id } = paramResult.data;
     try {
-      // @ts-expect-error TS(2554): Expected 3 arguments, but got 2.
       const result = await measurementService.deleteWaterIntake(req.userId, id);
       res.status(200).json(result);
     } catch (error) {
@@ -1130,6 +1129,7 @@ router.put(
     try {
       const updatedCategory = await measurementService.updateCustomCategory(
         req.userId,
+        req.userId,
         id,
         updateData
       );
@@ -1461,6 +1461,7 @@ router.get(
     const { measurementType } = req.params;
     try {
       const measurement = await measurementService.getMostRecentMeasurement(
+        req.userId,
         req.userId,
         measurementType
       );

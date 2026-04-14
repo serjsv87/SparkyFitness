@@ -1029,6 +1029,38 @@ async function deleteFoodEntryMeal(authenticatedUserId: any, mealId: any) {
     throw error;
   }
 }
+
+async function getFoodEntryMealsByDate(
+  authenticatedUserId: any,
+  targetUserId: any,
+  date: any
+) {
+  try {
+    return await foodEntryMealRepository.getFoodEntryMealsByDate(
+      targetUserId,
+      date
+    );
+  } catch (error) {
+    log('error', 'Error in getFoodEntryMealsByDate:', error);
+    throw error;
+  }
+}
+
+async function getFoodEntryMealWithComponents(
+  authenticatedUserId: any,
+  mealId: any
+) {
+  try {
+    return await foodEntryMealRepository.getFoodEntryMealById(
+      mealId,
+      authenticatedUserId
+    );
+  } catch (error) {
+    log('error', 'Error in getFoodEntryMealWithComponents:', error);
+    throw error;
+  }
+}
+
 export {
   getGlycemicIndexValue,
   getGlycemicIndexCategory,
@@ -1047,6 +1079,8 @@ export {
   createFoodEntryMeal,
   updateFoodEntryMeal,
   deleteFoodEntryMeal,
+  getFoodEntryMealsByDate,
+  getFoodEntryMealWithComponents,
 };
 export default {
   getGlycemicIndexValue,
@@ -1066,4 +1100,6 @@ export default {
   createFoodEntryMeal,
   updateFoodEntryMeal,
   deleteFoodEntryMeal,
+  getFoodEntryMealsByDate,
+  getFoodEntryMealWithComponents,
 };

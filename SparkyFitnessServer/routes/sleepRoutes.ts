@@ -214,6 +214,7 @@ router.get(
       }
       const sleepEntries =
         await measurementService.getSleepEntriesByUserIdAndDateRange(
+          req.userId,
           targetUserId,
           startDate,
           endDate
@@ -282,6 +283,7 @@ router.get(
       }
       const sleepEntries =
         await measurementService.getSleepEntriesByUserIdAndDateRange(
+          req.userId,
           targetUserId,
           startDate,
           endDate

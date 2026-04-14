@@ -18,9 +18,12 @@ async function extractNutritionFromLabel(
       return { success: false, error: 'No AI service configured' };
     }
     const aiService = await chatRepository.getAiServiceSettingForBackend(
-      setting.id,
+      setting.id as string,
       userId
     );
+    if (!aiService) {
+      return { success: false, error: 'AI service setting not found' };
+    }
     if (aiService.service_type !== 'ollama' && !aiService.api_key) {
       return {
         success: false,

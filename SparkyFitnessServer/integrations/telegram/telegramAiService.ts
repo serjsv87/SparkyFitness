@@ -26,7 +26,7 @@ export class TelegramAiService {
     const tz = user.timezone || 'UTC';
     const today = todayInZone(tz);
     const now = new Date();
-    const [hour, minute] = instantHourMinute(now, tz);
+    const { hour, minute } = instantHourMinute(now, tz);
     const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     let timeOfDay: string;
     if (hour >= 5 && hour < 12) timeOfDay = 'morning (ранок)';

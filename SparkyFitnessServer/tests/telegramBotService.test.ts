@@ -1,46 +1,45 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 const telegramBotService = require('../integrations/telegram/telegramBotService');
-import { log } from '../config/logging';
-import globalSettingsRepository from '../models/globalSettingsRepository';
-import poolManager from '../db/poolManager';
+import poolManager from '../db/poolManager.js';
 
-import userRepository from '../models/userRepository';
-import goalRepository from '../models/goalRepository';
-import * as foodEntry from '../models/foodEntry';
-import measurementRepository from '../models/measurementRepository';
-import preferenceRepository from '../models/preferenceRepository';
+import userRepository from '../models/userRepository.js';
+import goalRepository from '../models/goalRepository.js';
+import * as foodEntry from '../models/foodEntry.js';
+import measurementRepository from '../models/measurementRepository.js';
+import preferenceRepository from '../models/preferenceRepository.js';
 
-jest.mock('../models/globalSettingsRepository');
-jest.mock('../db/poolManager');
-jest.mock('../services/chatService');
-jest.mock('../models/chatRepository');
-jest.mock('../models/exerciseEntry');
-jest.mock('../models/userRepository');
-jest.mock('../models/goalRepository');
-jest.mock('../models/foodEntry');
-jest.mock('../models/measurementRepository');
-jest.mock('../models/preferenceRepository');
-jest.mock('node-telegram-bot-api');
-jest.mock('../config/logging', () => ({
-  log: jest.fn(),
+vi.mock('../models/globalSettingsRepository.js');
+vi.mock('../db/poolManager.js');
+vi.mock('../services/chatService.js');
+vi.mock('../models/chatRepository.js');
+vi.mock('../models/exerciseEntry.js');
+vi.mock('../models/userRepository.js');
+vi.mock('../models/goalRepository.js');
+vi.mock('../models/foodEntry.js');
+vi.mock('../models/measurementRepository.js');
+vi.mock('../models/preferenceRepository.js');
+vi.mock('node-telegram-bot-api');
+vi.mock('../config/logging.js', () => ({
+  log: vi.fn(),
 }));
-jest.mock('../../utils/timezoneLoader', () => ({
-  loadUserTimezone: jest.fn().mockResolvedValue('UTC'),
+vi.mock('../utils/timezoneLoader.js', () => ({
+  loadUserTimezone: vi.fn().mockResolvedValue('UTC'),
 }));
-jest.mock('@workspace/shared', () => ({
-  todayInZone: jest.fn().mockReturnValue('2026-04-06'),
+vi.mock('@workspace/shared', () => ({
+  todayInZone: vi.fn().mockReturnValue('2026-04-06'),
 }));
 
 describe('TelegramBotService', () => {
   const mockChatId = 123456789;
   const mockUserId = 'user-uuid';
   const mockClient = {
-    query: jest.fn(),
-    release: jest.fn(),
+    query: vi.fn(),
+    release: vi.fn(),
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    (poolManager.getSystemClient as jest.Mock).mockResolvedValue(mockClient);
+    vi.clearAllMocks();
+    (poolManager.getSystemClient as any).mockResolvedValue(mockClient);
   });
 
   describe('findUserAndLanguageByChatId', () => {
@@ -102,8 +101,8 @@ describe('TelegramBotService', () => {
         .mockResolvedValueOnce({}); // Second query (update user)
 
       // Mock bot.sendMessage
-      (telegramBotService as any).bot = { sendMessage: jest.fn() };
-      (telegramBotService as any).getMainMenuKeyboard = jest
+      (telegramBotService as any).bot = { sendMessage: vi.fn() };
+      (telegramBotService as any).getMainMenuKeyboard = vi
         .fn()
         .mockReturnValue({});
 
@@ -128,7 +127,7 @@ describe('TelegramBotService', () => {
       const mockCode = 'INVALID';
       mockClient.query.mockResolvedValue({ rows: [] });
 
-      (telegramBotService as any).bot = { sendMessage: jest.fn() };
+      (telegramBotService as any).bot = { sendMessage: vi.fn() };
 
       await telegramBotService.handleLink(mockChatId, mockCode);
 
@@ -147,19 +146,17 @@ describe('TelegramBotService', () => {
         { calories: 1500, protein: 100, carbs: 150, fat: 50 },
       ];
 
-      (userRepository.getUserProfile as jest.Mock).mockResolvedValue(
-        mockProfile
+      (userRepository.getUserProfile as any).mockResolvedValue(mockProfile);
+      (goalRepository.getMostRecentGoalBeforeDate as any).mockResolvedValue(
+        mockGoal
       );
-      (
-        goalRepository.getMostRecentGoalBeforeDate as jest.Mock
-      ).mockResolvedValue(mockGoal);
-      (foodEntry.getFoodEntriesByDate as jest.Mock).mockResolvedValue(
+      (foodEntry.getFoodEntriesByDate as any).mockResolvedValue(
         mockDailyProgress
       );
       (
-        measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate as jest.Mock
+        measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate as any
       ).mockResolvedValue({ weight: 80, height: 180 });
-      (preferenceRepository.getUserPreferences as jest.Mock).mockResolvedValue({
+      (preferenceRepository.getUserPreferences as any).mockResolvedValue({
         activity_level: 'sedentary',
       });
 
@@ -176,21 +173,8 @@ describe('TelegramBotService', () => {
 
   describe('executeIntent', () => {
     it('should return a detailed success message when logging food with macros', async () => {
-      const mockIntentResult = {
-        intent: 'log_food',
-        data: {
-          food_name: 'Banana',
-          quantity: 1,
-          unit: 'piece',
-          calories: 105,
-          protein: 1,
-          carbs: 27,
-          fat: 0,
-        },
-      };
-
       const {
-        executeIntent,
+        executeIntent: _executeIntent,
       } = require('../integrations/telegram/intentExecutor');
       // Mock executeIntent directly or test the service's reaction
       // In this case, we verify that the service handles the response correctly

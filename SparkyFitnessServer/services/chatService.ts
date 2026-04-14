@@ -1,5 +1,4 @@
 import chatRepository from '../models/chatRepository.js';
-import userRepository from '../models/userRepository.js';
 import measurementRepository from '../models/measurementRepository.js';
 import { log } from '../config/logging.js';
 import { getDefaultModel } from '../ai/config.js';
@@ -21,7 +20,8 @@ export async function handleAiServiceSettings(
       if (!result) {
         throw new Error('AI service setting not found.');
       }
-      const { encrypted_api_key, api_key_iv, api_key_tag, ...safeSetting } = result;
+      const { encrypted_api_key, api_key_iv, api_key_tag, ...safeSetting } =
+        result;
       return {
         message: 'AI service settings saved successfully.',
         setting: safeSetting,
@@ -43,7 +43,8 @@ export async function getAiServiceSettings(
   targetUserId: string
 ) {
   try {
-    const settings = await chatRepository.getAiServiceSettingsByUserId(targetUserId);
+    const settings =
+      await chatRepository.getAiServiceSettingsByUserId(targetUserId);
     return settings || []; // Return empty array if no settings found
   } catch (error: any) {
     log(
@@ -60,7 +61,8 @@ export async function getActiveAiServiceSetting(
   targetUserId: string
 ) {
   try {
-    const setting = await chatRepository.getActiveAiServiceSetting(targetUserId);
+    const setting =
+      await chatRepository.getActiveAiServiceSetting(targetUserId);
     if (setting) {
       const source = setting.source || 'unknown';
       log(
@@ -85,11 +87,17 @@ export async function deleteAiServiceSetting(
 ) {
   try {
     // Verify that the setting belongs to the authenticated user before deleting
-    const setting = await chatRepository.getAiServiceSettingById(id, authenticatedUserId);
+    const setting = await chatRepository.getAiServiceSettingById(
+      id,
+      authenticatedUserId
+    );
     if (!setting) {
       throw new Error('AI service setting not found.');
     }
-    const success = await chatRepository.deleteAiServiceSetting(id, authenticatedUserId);
+    const success = await chatRepository.deleteAiServiceSetting(
+      id,
+      authenticatedUserId
+    );
     if (!success) {
       throw new Error('AI service setting not found.');
     }
@@ -140,11 +148,17 @@ export async function getSparkyChatHistoryEntry(
   id: string
 ) {
   try {
-    const entryOwnerId = await chatRepository.getChatHistoryEntryOwnerId(id, authenticatedUserId);
+    const entryOwnerId = await chatRepository.getChatHistoryEntryOwnerId(
+      id,
+      authenticatedUserId
+    );
     if (!entryOwnerId) {
       throw new Error('Chat history entry not found.');
     }
-    const entry = await chatRepository.getChatHistoryEntryById(id, authenticatedUserId);
+    const entry = await chatRepository.getChatHistoryEntryById(
+      id,
+      authenticatedUserId
+    );
     return entry;
   } catch (error: any) {
     log(
@@ -162,7 +176,10 @@ export async function updateSparkyChatHistoryEntry(
   updateData: any
 ) {
   try {
-    const entryOwnerId = await chatRepository.getChatHistoryEntryOwnerId(id, authenticatedUserId);
+    const entryOwnerId = await chatRepository.getChatHistoryEntryOwnerId(
+      id,
+      authenticatedUserId
+    );
     if (!entryOwnerId) {
       throw new Error('Chat history entry not found.');
     }
@@ -197,7 +214,10 @@ export async function deleteSparkyChatHistoryEntry(
   id: string
 ) {
   try {
-    const entryOwnerId = await chatRepository.getChatHistoryEntryOwnerId(id, authenticatedUserId);
+    const entryOwnerId = await chatRepository.getChatHistoryEntryOwnerId(
+      id,
+      authenticatedUserId
+    );
     if (!entryOwnerId) {
       throw new Error('Chat history entry not found.');
     }
@@ -206,7 +226,10 @@ export async function deleteSparkyChatHistoryEntry(
         'Forbidden: You do not have permission to delete this chat history entry.'
       );
     }
-    const success = await chatRepository.deleteChatHistoryEntry(id, authenticatedUserId);
+    const success = await chatRepository.deleteChatHistoryEntry(
+      id,
+      authenticatedUserId
+    );
     if (!success) {
       throw new Error('Chat history entry not found.');
     }
@@ -291,7 +314,8 @@ export async function processChatMessage(
     }
 
     let response;
-    const model = aiService.model_name || getDefaultModel(aiService.service_type);
+    const model =
+      aiService.model_name || getDefaultModel(aiService.service_type);
 
     const [customCategories, chatTz] = await Promise.all([
       measurementRepository.getCustomCategories(authenticatedUserId),
@@ -300,7 +324,10 @@ export async function processChatMessage(
     const customCategoriesList =
       customCategories.length > 0
         ? customCategories
-            .map((cat: any) => `- ${cat.name} (${cat.measurement_type}, ${cat.frequency})`)
+            .map(
+              (cat: any) =>
+                `- ${cat.name} (${cat.measurement_type}, ${cat.frequency})`
+            )
             .join('\n')
         : 'None';
 
@@ -354,7 +381,9 @@ If input is "GENERATE_FOOD_OPTIONS:[food name] in [unit]", return ONLY a JSON ar
 Schema: [{"name": "string", "calories": number, "protein": number, "carbs": number, "fat": number, "serving_size": number, "serving_unit": "string"}]`;
 
     const messagesForAI: any[] = [];
-    const customSystemMessage = messages.find((msg: any) => msg.role === 'system');
+    const customSystemMessage = messages.find(
+      (msg: any) => msg.role === 'system'
+    );
 
     if (customSystemMessage) {
       messagesForAI.push({
@@ -540,7 +569,9 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
         };
 
         if (googleBody.contents.length === 0) {
-          throw new Error('No valid content (text or image) found to send to Google AI.');
+          throw new Error(
+            'No valid content (text or image) found to send to Google AI.'
+          );
         }
 
         if (cleanSystemPrompt && cleanSystemPrompt.length > 0) {
@@ -576,11 +607,15 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
         const ollamaMessages = messagesForAI.map((msg: any) => {
           let contentString = '';
           if (Array.isArray(msg.content)) {
-            const textParts = msg.content.filter((part: any) => part.type === 'text');
+            const textParts = msg.content.filter(
+              (part: any) => part.type === 'text'
+            );
             if (textParts.length > 0) {
               contentString = textParts.map((part: any) => part.text).join(' ');
             }
-            const imageParts = msg.content.filter((part: any) => part.type === 'image_url');
+            const imageParts = msg.content.filter(
+              (part: any) => part.type === 'image_url'
+            );
             if (imageParts.length > 0) {
               log(
                 'warn',
@@ -619,10 +654,17 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
             dispatcher: ollamaAgent,
           } as any);
         } catch (error: any) {
-          if (error.name === 'HeadersTimeoutError' || error.name === 'BodyTimeoutError') {
-            throw new Error(`Ollama chat request timed out after ${timeout}ms due to undici timeout.`);
+          if (
+            error.name === 'HeadersTimeoutError' ||
+            error.name === 'BodyTimeoutError'
+          ) {
+            throw new Error(
+              `Ollama chat request timed out after ${timeout}ms due to undici timeout.`
+            );
           }
-          throw new Error(`AI service API call error: 502 - Ollama fetch error: ${error.message}`);
+          throw new Error(
+            `AI service API call error: 502 - Ollama fetch error: ${error.message}`
+          );
         } finally {
           ollamaAgent.destroy();
         }
@@ -648,7 +690,9 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
         'error',
         `AI service API call error for ${aiService.service_type}. Status: ${response.status}, StatusText: ${response.statusText}, Body: ${errorBody}`
       );
-      throw new Error(`AI service API call error: ${response.status} - ${response.statusText}`);
+      throw new Error(
+        `AI service API call error: ${response.status} - ${response.statusText}`
+      );
     }
 
     const data = await response.json();
@@ -661,13 +705,16 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
       case 'groq':
       case 'openrouter':
       case 'custom':
-        content = data.choices?.[0]?.message?.content || 'No response from AI service';
+        content =
+          data.choices?.[0]?.message?.content || 'No response from AI service';
         break;
       case 'anthropic':
         content = data.content?.[0]?.text || 'No response from AI service';
         break;
       case 'google':
-        content = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from AI service';
+        content =
+          data.candidates?.[0]?.content?.parts?.[0]?.text ||
+          'No response from AI service';
         break;
       case 'ollama':
         content = data.message?.content || 'No response from AI service';
@@ -705,7 +752,10 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
           } = parsed;
           if (Object.keys(dataAtRoot).length > 0) {
             intentData = dataAtRoot;
-            log('info', `[AI RESPONSE] Extracted intentData from root because 'data' key was missing`);
+            log(
+              'info',
+              `[AI RESPONSE] Extracted intentData from root because 'data' key was missing`
+            );
           }
         }
       }
@@ -721,7 +771,11 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
       entryDate,
     };
   } catch (error: any) {
-    log('error', `Error processing chat message for user ${authenticatedUserId}:`, error);
+    log(
+      'error',
+      `Error processing chat message for user ${authenticatedUserId}:`,
+      error
+    );
     throw error;
   }
 }
@@ -763,7 +817,8 @@ export async function processFoodOptionsRequest(
       { role: 'user', content: `GENERATE_FOOD_OPTIONS:${foodName} in ${unit}` },
     ];
 
-    const model = aiService.model_name || getDefaultModel(aiService.service_type);
+    const model =
+      aiService.model_name || getDefaultModel(aiService.service_type);
 
     let response;
     switch (aiService.service_type) {
@@ -776,7 +831,9 @@ export async function processFoodOptionsRequest(
         log(
           'debug',
           `[AI Service Request] Type: ${aiService.service_type} (Food Options), URL: ${
-            aiService.service_type === 'openai' ? 'https://api.openai.com/v1/chat/completions' : aiService.custom_url
+            aiService.service_type === 'openai'
+              ? 'https://api.openai.com/v1/chat/completions'
+              : aiService.custom_url
           }, Model: ${model}`
         );
         response = await fetch(
@@ -795,7 +852,9 @@ export async function processFoodOptionsRequest(
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(aiService.api_key && { Authorization: `Bearer ${aiService.api_key}` }),
+              ...(aiService.api_key && {
+                Authorization: `Bearer ${aiService.api_key}`,
+              }),
             },
             body: JSON.stringify({ model, messages, temperature: 0.7 }),
           }
@@ -821,10 +880,12 @@ export async function processFoodOptionsRequest(
 
       case 'google':
         const googleBodyFoodOptions = {
-          contents: messages.map((msg) => ({
-            parts: [{ text: msg.content }],
-            role: msg.role === 'assistant' ? 'model' : 'user',
-          })).filter((content) => content.parts[0].text.trim() !== ''),
+          contents: messages
+            .map((msg) => ({
+              parts: [{ text: msg.content }],
+              role: msg.role === 'assistant' ? 'model' : 'user',
+            }))
+            .filter((content) => content.parts[0].text.trim() !== ''),
           systemInstruction: { parts: [{ text: systemPrompt }] },
         };
         response = await fetch(
@@ -838,14 +899,20 @@ export async function processFoodOptionsRequest(
         break;
 
       case 'ollama':
-        const ollamaAgentFoodOptions = new Agent({ headersTimeout: 1200000, bodyTimeout: 1200000 });
+        const ollamaAgentFoodOptions = new Agent({
+          headersTimeout: 1200000,
+          bodyTimeout: 1200000,
+        });
         try {
           response = await fetch(`${aiService.custom_url}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model,
-              messages: messages.map(msg => ({ role: msg.role, content: msg.content })),
+              messages: messages.map((msg) => ({
+                role: msg.role,
+                content: msg.content,
+              })),
               stream: false,
             }),
             dispatcher: ollamaAgentFoodOptions,
@@ -856,10 +923,13 @@ export async function processFoodOptionsRequest(
         break;
 
       default:
-        throw new Error(`Unsupported service type for food options generation: ${aiService.service_type}`);
+        throw new Error(
+          `Unsupported service type for food options generation: ${aiService.service_type}`
+        );
     }
 
-    if (!response.ok) throw new Error(`AI service API call error: ${response.status}`);
+    if (!response.ok)
+      throw new Error(`AI service API call error: ${response.status}`);
 
     const data = await response.json();
     let content = '';
@@ -885,7 +955,11 @@ export async function processFoodOptionsRequest(
 
     return { content };
   } catch (error: any) {
-    log('error', `Error processing food options request for user ${authenticatedUserId}:`, error);
+    log(
+      'error',
+      `Error processing food options request for user ${authenticatedUserId}:`,
+      error
+    );
     throw error;
   }
 }
