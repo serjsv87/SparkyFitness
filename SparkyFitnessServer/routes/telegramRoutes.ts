@@ -121,7 +121,7 @@ router.post('/webhook', (req: Request, res: Response) => {
 
   try {
     const validatedData = TelegramWebhookSchema.parse(req.body);
-    telegramBotService.handleUpdate(validatedData);
+    telegramBotService.handleUpdate(validatedData as any);
     res.sendStatus(200);
   } catch (error: any) {
     log('error', `Telegram webhook validation failed: ${error.message}`);

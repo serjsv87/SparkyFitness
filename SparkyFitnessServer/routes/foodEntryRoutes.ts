@@ -488,8 +488,8 @@ router.get(
       }
       const entries = await foodEntryService.getFoodEntriesByDate(
         req.userId,
-        targetUserId,
-        selectedDate
+        targetUserId as string,
+        selectedDate as string
       );
       res.status(200).json(entries);
     } catch (error) {
@@ -558,8 +558,8 @@ router.get(
       }
       const entries = await foodEntryService.getFoodEntriesByDate(
         req.userId,
-        targetUserId,
-        date
+        targetUserId as string,
+        date as string
       );
       res.status(200).json(entries);
     } catch (error) {
@@ -679,7 +679,7 @@ router.get(
     try {
       const summary = await foodEntryService.getDailyNutritionSummary(
         req.userId,
-        date
+        date as string
       );
       res.status(200).json(summary);
     } catch (error) {

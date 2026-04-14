@@ -7,8 +7,7 @@ import { sanitizeCustomNutrients } from '../utils/foodUtils.js';
 import * as mfpSyncService from './mfpSyncService.js';
 
 // Helper functions (already defined)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getGlycemicIndexValue(category: any) {
+function getGlycemicIndexValue(category: string) {
   switch (category) {
     case 'Very Low':
       return 10;
@@ -24,8 +23,7 @@ function getGlycemicIndexValue(category: any) {
       return null;
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getGlycemicIndexCategory(value: any) {
+function getGlycemicIndexCategory(value: number | null) {
   if (value === null) return 'None';
   if (value <= 20) return 'Very Low';
   if (value <= 50) return 'Low';
@@ -33,29 +31,25 @@ function getGlycemicIndexCategory(value: any) {
   if (value <= 90) return 'High';
   return 'Very High';
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function resolveMealTypeId(userId: any, mealTypeName: any) {
+async function resolveMealTypeId(userId: string, mealTypeName: string) {
   if (!mealTypeName) return null;
   const types = await mealTypeRepository.getAllMealTypes(userId);
   const match = types.find(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (t: any) => t.name.toLowerCase() === mealTypeName.toLowerCase()
+    (t: { name: string; id: string }) =>
+      t.name.toLowerCase() === mealTypeName.toLowerCase()
   );
   return match ? match.id : null;
 }
 
 async function createFoodEntry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  entryData: Record<string, unknown>
 ) {
   try {
-    const entryWithUser = {
+    const entryWithUser: Record<string, unknown> = {
       ...entryData,
-      user_id: entryData.user_id || authenticatedUserId,
+      user_id: (entryData.user_id as string) || authenticatedUserId,
       created_by_user_id: actingUserId,
     };
     if (entryData.custom_nutrients !== undefined) {
@@ -74,11 +68,15 @@ async function createFoodEntry(
 
     // Sync to MyFitnessPal if active
     mfpSyncService
-      .syncDailyNutritionToMFP(authenticatedUserId, entryData.entry_date)
-      .catch((err: any) => {
+      .syncDailyNutritionToMFP(
+        authenticatedUserId,
+        entryData.entry_date as string
+      )
+      .catch((err: unknown) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
         log(
           'warn',
-          `[MFP SYNC] Real-time sync failed after createFoodEntry: ${err.message}`
+          `[MFP SYNC] Real-time sync failed after createFoodEntry: ${errorMessage}`
         );
       });
 
@@ -93,14 +91,10 @@ async function createFoodEntry(
   }
 }
 async function updateFoodEntry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  entryId: string,
+  entryData: Record<string, unknown>
 ) {
   try {
     const entryOwnerId = await foodRepository.getFoodEntryOwnerId(
@@ -251,10 +245,11 @@ async function updateFoodEntry(
     // Sync to MyFitnessPal if active
     mfpSyncService
       .syncDailyNutritionToMFP(authenticatedUserId, updatedEntry.entry_date)
-      .catch((err: any) => {
+      .catch((err: unknown) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
         log(
           'warn',
-          `[MFP SYNC] Real-time sync failed after updateFoodEntry: ${err.message}`
+          `[MFP SYNC] Real-time sync failed after updateFoodEntry: ${errorMessage}`
         );
       });
 
@@ -268,8 +263,7 @@ async function updateFoodEntry(
     throw error;
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteFoodEntry(authenticatedUserId: any, entryId: any) {
+async function deleteFoodEntry(authenticatedUserId: string, entryId: string) {
   try {
     const entryOwnerId = await foodRepository.getFoodEntryOwnerId(
       entryId,
@@ -312,12 +306,9 @@ async function deleteFoodEntry(authenticatedUserId: any, entryId: any) {
   }
 }
 async function getFoodEntriesByDate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  selectedDate: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  selectedDate: string
 ) {
   try {
     if (!targetUserId) {
@@ -342,14 +333,10 @@ async function getFoodEntriesByDate(
   }
 }
 async function getFoodEntriesByDateRange(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  startDate: string,
+  endDate: string
 ) {
   try {
     const entries = await foodRepository.getFoodEntriesByDateRange(
@@ -362,24 +349,18 @@ async function getFoodEntriesByDateRange(
     log(
       'error',
       `Error fetching food entries for user ${targetUserId} from ${startDate} to ${endDate} by ${authenticatedUserId} in foodService:`,
-      error
+      error instanceof Error ? error.message : String(error)
     );
     throw error;
   }
 }
 async function copyFoodEntries(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sourceDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sourceMealType: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetMealType: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  sourceDate: string,
+  sourceMealType: string,
+  targetDate: string,
+  targetMealType: string
 ) {
   try {
     log(
@@ -408,18 +389,19 @@ async function copyFoodEntries(
     }
     // Map to keep track of duplicated food_entry_meals
     // Key: old_food_entry_meal_id, Value: new_food_entry_meal_id
-    const mealMapping = new Map();
+    const mealMapping = new Map<string, string>();
     const entriesToCreate = [];
     for (const entry of sourceEntries) {
       log(
         'debug',
         `copyFoodEntries: Processing source entry: ${JSON.stringify(entry)}`
       );
-      let newFoodEntryMealId = null;
+      let newFoodEntryMealId: string | null = null;
       // If the entry belongs to a meal container, ensure the container is duplicated
       if (entry.food_entry_meal_id) {
         if (mealMapping.has(entry.food_entry_meal_id)) {
-          newFoodEntryMealId = mealMapping.get(entry.food_entry_meal_id);
+          newFoodEntryMealId =
+            mealMapping.get(entry.food_entry_meal_id) || null;
         } else {
           // Fetch the original meal details
           const originalMeal =
@@ -443,7 +425,9 @@ async function copyFoodEntries(
               actingUserId
             );
             newFoodEntryMealId = newMeal.id;
-            mealMapping.set(entry.food_entry_meal_id, newFoodEntryMealId);
+            if (newFoodEntryMealId) {
+              mealMapping.set(entry.food_entry_meal_id, newFoodEntryMealId);
+            }
             log(
               'debug',
               `copyFoodEntries: Duplicated meal container "${originalMeal.name}" (${entry.food_entry_meal_id} -> ${newFoodEntryMealId})`
@@ -529,14 +513,10 @@ async function copyFoodEntries(
   }
 }
 async function copyFoodEntriesFromYesterday(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mealType: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetDate: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  mealType: string,
+  targetDate: string
 ) {
   try {
     const [yearStr, monthStr, dayStr] = targetDate.split('-');
@@ -572,14 +552,10 @@ async function copyFoodEntriesFromYesterday(
   }
 }
 async function copyAllFoodEntries(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sourceDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetDate: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  sourceDate: string,
+  targetDate: string
 ) {
   try {
     log(
@@ -599,15 +575,18 @@ async function copyAllFoodEntries(
       return [];
     }
     // 2. Identify unique meal types (slots) that have data
-    const usedMealTypes = [
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...new Set(allSourceEntries.map((e: any) => e.meal_type)),
-    ];
+    const usedMealTypes: string[] = Array.from(
+      new Set(
+        allSourceEntries.map(
+          (e: Record<string, unknown>) => e.meal_type as string
+        )
+      )
+    );
     log(
       'debug',
       `copyAllFoodEntries: Found ${usedMealTypes.length} slots with data: ${usedMealTypes.join(', ')}`
     );
-    const allCopiedEntries = [];
+    const allCopiedEntries: Record<string, unknown>[] = [];
     // 3. Loop through each slot and perform a Deep Copy
     for (const mealType of usedMealTypes) {
       const copiedEntries = await copyFoodEntries(
@@ -625,22 +604,19 @@ async function copyAllFoodEntries(
       `Successfully copied entire day (${allCopiedEntries.length} entries) from ${sourceDate} to ${targetDate} for user ${authenticatedUserId}.`
     );
     return allCopiedEntries;
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
       `Error copying all food entries for user ${authenticatedUserId} from ${sourceDate} to ${targetDate}:`,
-      error
+      error instanceof Error ? error.message : String(error)
     );
     throw error;
   }
 }
 async function copyAllFoodEntriesFromYesterday(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetDate: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  targetDate: string
 ) {
   try {
     const [yearStr, monthStr, dayStr] = targetDate.split('-');
@@ -669,13 +645,11 @@ async function copyAllFoodEntriesFromYesterday(
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getDailyNutritionByCategory(userId: any, date: any) {
+async function getDailyNutritionByCategory(userId: string, date: string) {
   return await foodRepository.getDailyNutritionByCategory(userId, date);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getDailyNutritionSummary(userId: any, date: any) {
+async function getDailyNutritionSummary(userId: string, date: string) {
   try {
     const summary = await foodRepository.getDailyNutritionSummary(userId, date);
     if (!summary) {
@@ -700,12 +674,9 @@ async function getDailyNutritionSummary(userId: any, date: any) {
 }
 // New functions for food_entry_meals logic
 async function createFoodEntryMeal(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mealData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  mealData: Record<string, unknown>
 ) {
   log(
     'info',
@@ -715,20 +686,21 @@ async function createFoodEntryMeal(
     // 1. Create the parent food_entry_meals record with quantity and unit
     const newFoodEntryMeal = await foodEntryMealRepository.createFoodEntryMeal(
       {
-        user_id: mealData.user_id || authenticatedUserId, // Use target user ID
-        meal_template_id: mealData.meal_template_id || null,
-        meal_type_id: mealData.meal_type_id || null,
+        user_id: (mealData.user_id as string) || authenticatedUserId, // Use target user ID
+        meal_template_id: (mealData.meal_template_id as string) || null,
+        meal_type_id: (mealData.meal_type_id as string) || null,
         meal_type: mealData.meal_type,
         entry_date: mealData.entry_date,
         name: mealData.name,
         description: mealData.description,
-        quantity: mealData.quantity || 1.0, // Default to 1.0
-        unit: mealData.unit || 'serving', // Default to 'serving'
+        quantity: (mealData.quantity as number) || 1.0, // Default to 1.0
+        unit: (mealData.unit as string) || 'serving', // Default to 'serving'
       },
       actingUserId
     );
     const resolvedMealTypeId = newFoodEntryMeal.meal_type_id;
-    let foodsToProcess = mealData.foods || [];
+    let foodsToProcess =
+      (mealData.foods as Array<Record<string, unknown>>) || [];
     let mealServingSize = 1.0; // Default serving size
     // If a meal_template id is provided fetch the template for serving size
     if (mealData.meal_template_id) {
@@ -738,18 +710,23 @@ async function createFoodEntryMeal(
       );
       const mealTemplate = await mealService.getMealById(
         authenticatedUserId,
-        mealData.meal_template_id
+        mealData.meal_template_id as string
       );
       if (mealTemplate) {
-        mealServingSize = mealTemplate.serving_size || 1.0; // Always get the meal serving size
+        mealServingSize = (mealTemplate.serving_size as number) || 1.0; // Always get the meal serving size
         log(
           'info',
           `Meal template serving size: ${mealServingSize} ${mealTemplate.serving_unit || 'serving'}`
         );
         // If no specific foods provided use template
-        if (!mealData.foods || mealData.foods.length === 0) {
+        if (
+          !mealData.foods ||
+          (mealData.foods as Array<unknown>).length === 0
+        ) {
           if (mealTemplate.foods) {
-            foodsToProcess = mealTemplate.foods;
+            foodsToProcess = mealTemplate.foods as Array<
+              Record<string, unknown>
+            >;
           } else {
             log(
               'warn',
@@ -766,7 +743,7 @@ async function createFoodEntryMeal(
       }
     }
     // Calculate portion multiplier: consumed_quantity / meal_serving_size
-    const consumedQuantity = mealData.quantity || 1.0;
+    const consumedQuantity = (mealData.quantity as number) || 1.0;
     let multiplier = 1.0;
     //Scale if there is a template ID
     if (mealData.meal_template_id) {
@@ -784,7 +761,7 @@ async function createFoodEntryMeal(
     const entriesToCreate = [];
     for (const foodItem of foodsToProcess) {
       const food = await foodRepository.getFoodById(
-        foodItem.food_id,
+        foodItem.food_id as string,
         authenticatedUserId
       );
       if (!food) {
@@ -795,7 +772,7 @@ async function createFoodEntryMeal(
         continue;
       }
       const variant = await foodRepository.getFoodVariantById(
-        foodItem.variant_id,
+        foodItem.variant_id as string,
         authenticatedUserId
       );
       if (!variant) {
@@ -828,14 +805,18 @@ async function createFoodEntryMeal(
         calcium: variant.calcium,
         iron: variant.iron,
         glycemic_index: variant.glycemic_index,
-        custom_nutrients: sanitizeCustomNutrients(variant.custom_nutrients),
+        custom_nutrients: sanitizeCustomNutrients(
+          variant.custom_nutrients as Record<string, unknown>
+        ),
       };
       // Note: We are deliberatly NOT applying inline overrides here for meal components.
       // Scaling nutrition based on multiplier
-      const scaleNutrition = (val: any) =>
-        val !== null ? parseFloat((val * multiplier).toFixed(4)) : null;
+      const scaleNutrition = (val: unknown) =>
+        val !== null && val !== undefined
+          ? parseFloat(((val as number) * multiplier).toFixed(4))
+          : null;
       entriesToCreate.push({
-        user_id: mealData.user_id || authenticatedUserId,
+        user_id: (mealData.user_id as string) || authenticatedUserId,
         food_id: foodItem.food_id,
         meal_type_id: resolvedMealTypeId,
         quantity: scaleNutrition(variant.serving_size), // Scale serving quantity
@@ -867,7 +848,9 @@ async function createFoodEntryMeal(
         calcium: scaleNutrition(snapshot.calcium),
         iron: scaleNutrition(snapshot.iron),
         glycemic_index: snapshot.glycemic_index,
-        custom_nutrients: sanitizeCustomNutrients(snapshot.custom_nutrients),
+        custom_nutrients: sanitizeCustomNutrients(
+          snapshot.custom_nutrients as Record<string, unknown>
+        ),
       });
     }
     if (entriesToCreate.length > 0) {
@@ -876,25 +859,24 @@ async function createFoodEntryMeal(
         authenticatedUserId
       );
     }
-    // 3. Return the created food_entry_meal (with calculated totals)
     return await foodEntryMealRepository.getFoodEntryMealById(
       newFoodEntryMeal.id,
       authenticatedUserId
     );
-  } catch (error) {
-    log('error', 'Error in createFoodEntryMeal:', error);
+  } catch (error: unknown) {
+    log(
+      'error',
+      'Error in createFoodEntryMeal:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
 async function updateFoodEntryMeal(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  foodEntryMealId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mealData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  foodEntryMealId: string,
+  mealData: Record<string, unknown>
 ) {
   log(
     'info',
@@ -934,10 +916,10 @@ async function updateFoodEntryMeal(
             mealServingSize = template.serving_size || 1.0;
           }
         }
-        const newMultiplier = mealData.quantity / mealServingSize;
+        const newMultiplier = (mealData.quantity as number) / mealServingSize;
         const oldMultiplier = existingMeal.quantity / mealServingSize;
         const ratio = newMultiplier / oldMultiplier;
-        const scale = (val: any) =>
+        const scale = (val: number | null) =>
           val !== null ? parseFloat((val * ratio).toFixed(4)) : null;
         for (const component of components) {
           await foodRepository.updateFoodEntry(
@@ -1005,12 +987,19 @@ async function updateFoodEntryMeal(
       foodEntryMealId,
       authenticatedUserId
     );
-  } catch (error) {
-    log('error', 'Error in updateFoodEntryMeal:', error);
+  } catch (error: unknown) {
+    log(
+      'error',
+      'Error in updateFoodEntryMeal:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
-async function deleteFoodEntryMeal(authenticatedUserId: any, mealId: any) {
+async function deleteFoodEntryMeal(
+  authenticatedUserId: string,
+  mealId: string
+) {
   log(
     'info',
     `deleteFoodEntryMeal in foodEntryService: authenticatedUserId: ${authenticatedUserId}, mealId: ${mealId}`
@@ -1024,39 +1013,51 @@ async function deleteFoodEntryMeal(authenticatedUserId: any, mealId: any) {
       throw new Error('Food entry meal not found or not authorized to delete.');
     }
     return true;
-  } catch (error) {
-    log('error', 'Error in deleteFoodEntryMeal:', error);
+  } catch (error: unknown) {
+    log(
+      'error',
+      'Error in deleteFoodEntryMeal:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
 
 async function getFoodEntryMealsByDate(
-  authenticatedUserId: any,
-  targetUserId: any,
-  date: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string
 ) {
   try {
     return await foodEntryMealRepository.getFoodEntryMealsByDate(
       targetUserId,
       date
     );
-  } catch (error) {
-    log('error', 'Error in getFoodEntryMealsByDate:', error);
+  } catch (error: unknown) {
+    log(
+      'error',
+      'Error in getFoodEntryMealsByDate:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
 
 async function getFoodEntryMealWithComponents(
-  authenticatedUserId: any,
-  mealId: any
+  authenticatedUserId: string,
+  mealId: string
 ) {
   try {
     return await foodEntryMealRepository.getFoodEntryMealById(
       mealId,
       authenticatedUserId
     );
-  } catch (error) {
-    log('error', 'Error in getFoodEntryMealWithComponents:', error);
+  } catch (error: unknown) {
+    log(
+      'error',
+      'Error in getFoodEntryMealWithComponents:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }

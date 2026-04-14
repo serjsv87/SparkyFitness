@@ -16,16 +16,33 @@ import { todayInZone, addDays } from '@workspace/shared';
 import sleepRepository from '../models/sleepRepository.js';
 import goalService from './goalService.js';
 import goalRepository from '../models/goalRepository.js';
+// Removed AxiosError import as it is never read.
+
+interface GarminData {
+  activities?: any[];
+  workouts?: any[];
+  workoutName?: string;
+  description?: string;
+  workoutSegments?: any[];
+}
+
+interface GarminHealthData {
+  stress?: any[];
+}
+
+interface GarminSessionData {
+  activity: any;
+  exercise_sets?: { exerciseSets: any[] };
+  details?: any;
+  splits?: any;
+  hr_in_timezones?: any[];
+}
 
 async function processActivitiesAndWorkouts(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any,
+  userId: string,
+  data: GarminData,
+  startDate: string,
+  endDate: string,
   timezone = 'UTC'
 ) {
   const { activities, workouts } = data;
@@ -80,16 +97,11 @@ async function processActivitiesAndWorkouts(
   return { processedEntries: processedCount };
 }
 async function processGarminHealthAndWellnessData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  healthData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any
+  userId: string,
+  actingUserId: string,
+  healthData: GarminHealthData,
+  startDate: string,
+  endDate: string
 ) {
   log(
     'info',
@@ -134,17 +146,19 @@ async function processGarminHealthAndWellnessData(
               status: 'success',
               date,
             });
-          } catch (error: any) {
+          } catch (error: unknown) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
             log(
               'error',
               `Error storing raw stress data for user ${userId} on ${date}:`,
-              error
+              errorMessage
             );
             errors.push({
               type: 'raw_stress_data',
               status: 'error',
               date,
-              message: error.message,
+              message: errorMessage,
             });
           }
         }
@@ -162,17 +176,19 @@ async function processGarminHealthAndWellnessData(
               status: 'success',
               date,
             });
-          } catch (error: any) {
+          } catch (error: unknown) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
             log(
               'error',
               `Error storing derived mood value for user ${userId} on ${date}:`,
-              error
+              errorMessage
             );
             errors.push({
               type: 'derived_mood_value',
               status: 'error',
               date,
-              message: error.message,
+              message: errorMessage,
             });
           }
         }
@@ -183,15 +199,16 @@ async function processGarminHealthAndWellnessData(
     // if (healthData.heart_rates && Array.isArray(healthData.heart_rates)) {
     //   for (const hrEntry of healthData.heart_rates) {
     //     // Process heart rate data
-    //   }
     // }
-  } catch (error: any) {
+    // }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     log(
       'error',
       `[garminService] Unexpected error in processGarminHealthAndWellnessData for user ${userId}:`,
-      error
+      errorMessage
     );
-    errors.push({ type: 'general', status: 'error', message: error.message });
+    errors.push({ type: 'general', status: 'error', message: errorMessage });
   }
   if (errors.length > 0) {
     throw new Error(
@@ -211,14 +228,10 @@ async function processGarminHealthAndWellnessData(
 }
 // Helper function to process a Garmin workout session (e.g., Wokroutv2.txt)
 async function processGarminWorkoutSession(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sessionData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any,
+  userId: string,
+  sessionData: GarminSessionData,
+  startDate: string,
+  endDate: string,
   timezone = 'UTC'
 ) {
   const { activity, exercise_sets } = sessionData;
@@ -542,9 +555,12 @@ async function processGarminWorkoutSession(
   }
 }
 // Helper function to process a Garmin workout definition (e.g., workout training.txt)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function processGarminWorkoutDefinition(userId: any, workoutData: any) {
-  const workoutName = workoutData.workoutName || 'Garmin Workout Definition';
+async function processGarminWorkoutDefinition(
+  userId: string,
+  workoutData: GarminData
+) {
+  const workoutName =
+    (workoutData as any).workoutName || 'Garmin Workout Definition';
   const description =
     workoutData.description || `Workout definition from Garmin: ${workoutName}`;
   let workoutPreset = await workoutPresetRepository.getWorkoutPresetByName(
@@ -625,10 +641,8 @@ async function processGarminWorkoutDefinition(userId: any, workoutData: any) {
 }
 // Helper function to process a simple Garmin activity
 async function processGarminSimpleActivity(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  activityData: any,
+  userId: string,
+  activityData: GarminSessionData,
   timezone = 'UTC'
 ) {
   const { activity } = activityData;
@@ -690,16 +704,11 @@ async function processGarminSimpleActivity(
   });
 }
 async function processGarminSleepData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sleepDataArray: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any
+  userId: string,
+  actingUserId: string,
+  sleepDataArray: any[],
+  startDate: string,
+  endDate: string
 ) {
   const processedResults = [];
   const errors = [];
@@ -722,15 +731,17 @@ async function processGarminSleepData(
         sleepEntry
       );
       processedResults.push({ status: 'success', data: result });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       log(
         'error',
         `Error processing Garmin sleep entry for user ${userId}:`,
-        error
+        errorMessage
       );
       errors.push({
         status: 'error',
-        message: error.message,
+        message: errorMessage,
         entry: sleepEntry,
       });
     }
@@ -752,8 +763,8 @@ async function processGarminSleepData(
 }
 
 async function syncGarminHydration(
-  userId: any,
-  date: any,
+  userId: string,
+  date: string,
   isManualTrigger = false
 ) {
   log(

@@ -72,9 +72,9 @@ router.post('/', async (req, res, next) => {
     );
     log('info', `User ${userId} created FoodEntryMeal ${newFoodEntryMeal.id}`);
     res.status(201).json(newFoodEntryMeal);
-  } catch (err) {
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
-    log('error', `Error creating FoodEntryMeal: ${err.message}`, err);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    log('error', `Error creating FoodEntryMeal: ${errorMessage}`, err);
     next(err);
   }
 });
@@ -126,13 +126,13 @@ router.get('/by-date/:date', async (req, res, next) => {
     }
     const foodEntryMeals = await foodEntryService.getFoodEntryMealsByDate(
       req.userId,
-      targetUserId,
-      date
+      targetUserId as string,
+      date as string
     ); // Corrected arguments
     res.status(200).json(foodEntryMeals);
-  } catch (err) {
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
-    log('error', `Error getting FoodEntryMeals by date: ${err.message}`, err);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    log('error', `Error getting FoodEntryMeals by date: ${errorMessage}`, err);
     next(err);
   }
 });
@@ -178,9 +178,9 @@ router.get('/:id', async (req, res, next) => {
       log('warn', `FoodEntryMeal with ID ${id} not found for user ${userId}`);
       res.status(404).json({ message: 'FoodEntryMeal not found' });
     }
-  } catch (err) {
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
-    log('error', `Error getting FoodEntryMeal by ID: ${err.message}`, err);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    log('error', `Error getting FoodEntryMeal by ID: ${errorMessage}`, err);
     next(err);
   }
 });
@@ -286,9 +286,9 @@ router.put('/:id', async (req, res, next) => {
     );
     log('info', `User ${userId} updated FoodEntryMeal`);
     res.status(200).json(updatedFoodEntryMeal);
-  } catch (err) {
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
-    log('error', `Error updating FoodEntryMeal: ${err.message}`, err);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    log('error', `Error updating FoodEntryMeal: ${errorMessage}`, err);
     next(err);
   }
 });
@@ -323,9 +323,9 @@ router.delete('/:id', async (req, res, next) => {
     await foodEntryService.deleteFoodEntryMeal(userId, id);
     log('info', `User ${userId} deleted FoodEntryMeal ${id}`);
     res.status(204).send(); // No content
-  } catch (err) {
-    // @ts-expect-error TS(2571): Object is of type 'unknown'.
-    log('error', `Error deleting FoodEntryMeal: ${err.message}`, err);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    log('error', `Error deleting FoodEntryMeal: ${errorMessage}`, err);
     next(err);
   }
 });

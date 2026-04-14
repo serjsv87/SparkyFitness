@@ -156,13 +156,13 @@ router.get(
       });
     }
     const { date } = paramResult.data;
-    const { userId } = req.query;
+    const userId = req.query.userId as string | undefined;
 
     const targetUserId = userId || req.userId;
     // Permission check if explicit userId is provided
 
     if (userId && userId !== req.userId) {
-      const hasPermission = await { canAccessUserData }.canAccessUserData(
+      const hasPermission = await canAccessUserData(
         userId,
         'diary',
 
@@ -240,11 +240,11 @@ router.post(
     const { entry_date, change_drinks, container_id, user_id } =
       bodyResult.data;
 
-    const targetUserId = user_id || req.userId;
+    const targetUserId = (user_id as string) || req.userId;
     // Check permission if explicitly management for another user
 
     if (user_id && user_id !== req.userId) {
-      const hasPermission = await { canAccessUserData }.canAccessUserData(
+      const hasPermission = await canAccessUserData(
         user_id,
         'checkin',
 
@@ -259,7 +259,7 @@ router.post(
         req.originalUserId || req.userId,
         entry_date,
         change_drinks,
-        container_id
+        container_id as number | null
       );
       res.status(200).json(result);
     } catch (error) {
@@ -632,13 +632,13 @@ router.get(
       });
     }
     const { date } = paramResult.data;
-    const { userId } = req.query; // Check query param
+    const userId = req.query.userId as string | undefined;
 
     const targetUserId = userId || req.userId;
     // Permission check if explicit userId is provided
 
     if (userId && userId !== req.userId) {
-      const hasPermission = await { canAccessUserData }.canAccessUserData(
+      const hasPermission = await canAccessUserData(
         userId,
         'checkin',
 
@@ -1295,10 +1295,9 @@ router.get(
     try {
       const entries = await measurementService.getCustomMeasurementEntries(
         req.userId,
-        limit,
-        orderBy,
-        // @ts-expect-error TS(2698): Spread types may only be created from object types... Remove this comment to see the full error message
-        { ...filter, category_id }
+        limit as string | undefined,
+        orderBy as string | undefined,
+        { ...(filter as Record<string, any>), category_id }
       ); // Pass category_id in filter object
       res.status(200).json(entries);
     } catch (error) {

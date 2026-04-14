@@ -28,11 +28,11 @@ import foodEntry from '../../models/foodEntry.js';
  */
 export async function executeIntent(
   intent: string,
-  data: any,
+  data: Record<string, unknown>,
   entryDate: string | null,
   userId: string,
   today: string
-): Promise<any> {
+): Promise<unknown> {
   const dateToUse = resolveDate(entryDate, today);
 
   switch (intent) {
@@ -71,7 +71,7 @@ export async function executeIntent(
  * Log body measurements (weight, steps, waist, hips, neck, height).
  */
 export async function executeMeasurement(
-  data: any,
+  data: Record<string, unknown>,
   dateToUse: string,
   userId: string
 ): Promise<string> {
@@ -83,7 +83,7 @@ export async function executeMeasurement(
 
   const standardTypes = ['weight', 'neck', 'waist', 'hips', 'steps', 'height'];
 
-  for (const m of measurements) {
+  for (const m of measurements as Record<string, any>[]) {
     const type = m.measurement_type || m.type;
     if (!type || m.value === undefined) continue;
 
@@ -106,10 +106,10 @@ export async function executeMeasurement(
             userId,
             name
           );
-        } catch (e: any) {
+        } catch (error: unknown) {
           log(
             'warn',
-            `[INTENT] Could not find/create custom category "${name}": ${e.message}`
+            `[INTENT] Could not find/create custom category "${name}": ${error instanceof Error ? error.message : String(error)}`
           );
         }
 
@@ -130,19 +130,22 @@ export async function executeMeasurement(
           failed.push(name);
         }
       }
-    } catch (e: any) {
-      log('error', `[INTENT] Measurement error for ${type}: ${e.message}`);
+    } catch (error: unknown) {
+      log(
+        'error',
+        `[INTENT] Measurement error for ${type}: ${error instanceof Error ? error.message : String(error)}`
+      );
       failed.push(type);
     }
   }
 
   if (confirmed.length === 0) {
-    return '❌ Не вдалося записати виміри.';
+    return '❌ Failed to log measurements.';
   }
 
-  let msg = `✅ Записано (${dateToUse}):\n${confirmed.map((c) => `  • ${c}`).join('\n')}`;
+  let msg = `✅ Logged (${dateToUse}):\n${confirmed.map((c) => `  • ${c}`).join('\n')}`;
   if (failed.length > 0) {
-    msg += `\n⚠️ Помилка: ${failed.join(', ')}`;
+    msg += `\n⚠️ Error: ${failed.join(', ')}`;
   }
   return msg;
 }
@@ -151,13 +154,13 @@ export async function executeMeasurement(
  * Log water intake. AI sends glasses_consumed or quantity in ml/glasses.
  */
 export async function executeWater(
-  data: any,
+  data: Record<string, unknown>,
   dateToUse: string,
   userId: string
 ): Promise<string> {
   try {
     const glassesOrMl = Number(data.glasses_consumed ?? data.quantity ?? 1);
-    const unit = data.unit || 'glass';
+    const unit = (data.unit || 'glass') as string;
 
     // Convert to ml
     const mlPerUnit = WATER_ML_PER_UNIT[unit] ?? DEFAULT_WATER_ML_PER_UNIT;
@@ -192,10 +195,13 @@ export async function executeWater(
     const goals = await goalService.getUserGoals(userId, dateToUse);
     const goalML = goals ? Math.round(goals.water_goal_ml) : 2000;
 
-    return `✅ <b>Вода записана: +${Math.round(totalMl)} мл</b>\n💧 <b>Всього за сьогодні: ${updatedTotalML} / ${goalML} мл</b>\n📅 [${dateToUse}]`;
-  } catch (e: any) {
-    log('error', `[INTENT] Water error: ${e.message}`);
-    return `❌ Помилка запису води: ${e.message}`;
+    return `✅ <b>Water logged: +${Math.round(totalMl)} ml</b>\n💧 <b>Total for today: ${updatedTotalML} / ${goalML} ml</b>\n📅 [${dateToUse}]`;
+  } catch (error: unknown) {
+    log(
+      'error',
+      `[INTENT] Water error: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return `❌ Error logging water: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
@@ -203,20 +209,19 @@ export async function executeWater(
  * Log food entry with inline nutritional snapshot from AI.
  */
 export async function executeFood(
-  data: any,
+  data: Record<string, unknown>,
   dateToUse: string,
   userId: string
 ): Promise<string> {
   try {
-    const mealType = normalizeMealType(data?.meal_type);
+    const mealType = normalizeMealType(data?.meal_type as string);
     const quantity = Number(data?.quantity ?? data?.qty ?? data?.amount) || 1;
-    const unit = data?.unit || data?.serving_unit || 'serving';
-    const foodName =
-      data?.food_name ||
+    const unit = (data?.unit || data?.serving_unit || 'serving') as string;
+    const foodName = (data?.food_name ||
       data?.name ||
       data?.food ||
       data?.item ||
-      'Unknown Food';
+      'Unknown Food') as string;
 
     // Extract macros with even more robust aliases
     const calories =
@@ -290,7 +295,7 @@ export async function executeFood(
     }
 
     if (!variantId) {
-      return `❌ Помилка запису їжі: Не вдалося знайти або створити варіант порції для "${foodName}".`;
+      return `❌ Food entry error: Unable to find or create a serving option for "${foodName}".`;
     }
 
     // Create entry with potential estimates
@@ -333,9 +338,12 @@ export async function executeFood(
     const calDisplay = calories ? ` (~${Math.round(calories)} ккал)` : '';
 
     return `✅ <b>Їжа записана: ${foodName} — ${quantity} ${unit}${calDisplay}</b>${macrosDisplay}\n⏰ [${mealType}, ${dateToUse}]`;
-  } catch (e: any) {
-    log('error', `[INTENT] Food error: ${e.message}`);
-    return `❌ Помилка запису їжі: ${e.message}`;
+  } catch (error: unknown) {
+    log(
+      'error',
+      `[INTENT] Food error: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return `❌ Помилка запису їжі: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
@@ -343,12 +351,12 @@ export async function executeFood(
  * Log exercise entry. Searches existing exercises, creates if not found.
  */
 export async function executeExercise(
-  data: any,
+  data: Record<string, unknown>,
   dateToUse: string,
   userId: string
 ): Promise<string> {
   try {
-    const name = data.exercise_name || 'Unknown Exercise';
+    const name = (data.exercise_name || 'Unknown Exercise') as string;
     const duration = Number(data.duration_minutes) || 30;
 
     // Search for existing exercise
@@ -367,8 +375,11 @@ export async function executeExercise(
         exerciseId = results[0].id;
         caloriesPerHour = results[0].calories_per_hour || 300;
       }
-    } catch (e: any) {
-      log('warn', `[INTENT] Exercise search failed: ${e.message}`);
+    } catch (error: unknown) {
+      log(
+        'warn',
+        `[INTENT] Exercise search failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     // Create exercise if not found
@@ -384,13 +395,16 @@ export async function executeExercise(
         });
         exerciseId = newExercise.id;
         caloriesPerHour = newExercise.calories_per_hour || 300;
-      } catch (e: any) {
-        log('warn', `[INTENT] Exercise create failed: ${e.message}`);
+      } catch (error: unknown) {
+        log(
+          'warn',
+          `[INTENT] Exercise create failed: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
 
     if (!exerciseId) {
-      return `⚠️ Не вдалося знайти або створити вправу "${name}".`;
+      return `⚠️ Unable to find or create the exercise "${name}".`;
     }
 
     const caloriesBurned = Math.round((caloriesPerHour * duration) / 60);
@@ -404,9 +418,12 @@ export async function executeExercise(
     });
 
     return `✅ Тренування: ${name} — ${duration} хв (~${caloriesBurned} ккал) [${dateToUse}]`;
-  } catch (e: any) {
-    log('error', `[INTENT] Exercise error: ${e.message}`);
-    return `❌ Помилка запису тренування: ${e.message}`;
+  } catch (error: unknown) {
+    log(
+      'error',
+      `[INTENT] Exercise error: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return `❌ Помилка запису тренування: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
@@ -448,18 +465,18 @@ function estimateCaloriesPerHour(name: string): number {
  * These will return a state that causes the bot to show confirmation buttons.
  */
 export async function executeDeleteMeasurement(
-  data: any,
+  data: Record<string, unknown>,
   dateToUse: string,
   userId: string
-): Promise<any> {
+): Promise<unknown> {
   try {
     const { measurements = [] } = data;
     const itemsToDelete = Array.isArray(measurements) ? measurements : [data];
     if (itemsToDelete.length === 0) return '❓ Не вказано, що саме видалити.';
 
-    const matches = [];
-    for (const m of itemsToDelete) {
-      const type = m.type || 'weight';
+    const matches: any[] = [];
+    for (const m of itemsToDelete as Record<string, any>[]) {
+      const type = (m.type as string) || 'weight';
       const records =
         await measurementRepository.getCheckInMeasurementsByDateRange(
           userId,
@@ -467,7 +484,7 @@ export async function executeDeleteMeasurement(
           dateToUse
         );
 
-      for (const rec of records) {
+      for (const rec of records as Record<string, any>[]) {
         if (rec[type] !== null) {
           // If a specific value was mentioned, match it
           if (m.value && Math.abs(Number(rec[type]) - Number(m.value)) > 0.1)
@@ -486,29 +503,32 @@ export async function executeDeleteMeasurement(
     }
 
     if (matches.length === 0) {
-      return `🤷 Не знайдено записів для видалення за ${dateToUse}.`;
+      return `🤷 No records found to delete for ${dateToUse}.`;
     }
 
     return {
       intent: 'confirm_deletion',
       matches,
     };
-  } catch (e: any) {
-    log('error', `[INTENT] Delete measurement error: ${e.message}`);
-    return `❌ Помилка при пошуку записів: ${e.message}`;
+  } catch (error: unknown) {
+    log(
+      'error',
+      `[INTENT] Delete measurement error: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return `❌ Error while searching for records: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
 export async function executeDeleteFood(
-  data: any,
+  data: Record<string, unknown>,
   dateToUse: string,
   userId: string
-): Promise<any> {
+): Promise<unknown> {
   try {
-    const foodName = data.food_name;
+    const foodName = data.food_name as string;
 
     const records = await foodEntry.getFoodEntriesByDate(userId, dateToUse);
-    const matches = records
+    const matches = (records as any[])
       .filter(
         (r: any) =>
           !foodName ||
@@ -530,8 +550,11 @@ export async function executeDeleteFood(
       intent: 'confirm_deletion',
       matches,
     };
-  } catch (e: any) {
-    log('error', `[INTENT] Delete food error: ${e.message}`);
-    return `❌ Помилка при пошуку їжі: ${e.message}`;
+  } catch (error: unknown) {
+    log(
+      'error',
+      `[INTENT] Delete food error: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return `❌ A mistake while searching for food: ${error instanceof Error ? error.message : String(error)}`;
   }
 }

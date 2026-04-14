@@ -197,7 +197,11 @@ describe('chatService', () => {
       });
     });
     it('should save chat history', async () => {
-      const historyData = { message: 'new message' };
+      const historyData = {
+        content: 'Test message',
+        messageType: 'user',
+        metadata: { key: 'value' },
+      };
       (chatRepository as any).saveChatHistory = vi
         .fn()
         .mockResolvedValue(undefined);

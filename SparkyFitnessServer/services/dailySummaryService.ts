@@ -120,12 +120,12 @@ function computeCalorieBalance(
         heightCm,
         age,
         gender,
-        bodyFat
+        bodyFat ?? null
       );
     } catch (error: unknown) {
       log(
         'warn',
-        `dailySummaryService: BMR calc failed: ${(error as Error).message}`
+        `dailySummaryService: BMR calc failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -233,7 +233,11 @@ export async function getDailySummary({
     measurements,
   ] = await Promise.all([
     goalService.getUserGoals(targetUserId, date),
-    foodEntryService.getFoodEntriesByDate(actorUserId, targetUserId, date),
+    foodEntryService.getFoodEntriesByDate(
+      actorUserId,
+      targetUserId as string,
+      date as string
+    ),
     getExerciseEntriesByDateV2(targetUserId, date),
     includeCheckin
       ? measurementRepository

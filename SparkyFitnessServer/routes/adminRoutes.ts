@@ -596,7 +596,7 @@ router.post('/ai-service-settings/global', async (req, res, next) => {
       await chatRepository.upsertGlobalAiServiceSetting(settingData);
 
     await logAdminAction(req.userId, null, 'GLOBAL_AI_SETTING_CREATED', {
-      settingId: result.id,
+      settingId: result?.id,
       serviceName: service_name,
     });
     res.status(201).json(result);

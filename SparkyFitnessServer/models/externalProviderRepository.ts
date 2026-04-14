@@ -1,8 +1,7 @@
 import { getClient, getSystemClient } from '../db/poolManager.js';
 import { encrypt, decrypt, ENCRYPTION_KEY } from '../security/encryption.js';
 import { log } from '../config/logging.js';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getExternalDataProviders(userId: any) {
+async function getExternalDataProviders(userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -14,12 +13,17 @@ async function getExternalDataProviders(userId: any) {
        ORDER BY edp.created_at DESC`,
       []
     );
-    // log('debug', `getExternalDataProviders: Raw query results for user ${userId}:`, result.rows);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return result.rows.map((row: any) => ({
-      ...row,
-
-      // Add has_token property
+    return result.rows.map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      user_id: row.user_id as string,
+      provider_name: row.provider_name as string,
+      provider_type: row.provider_type as string,
+      is_active: !!row.is_active,
+      base_url: row.base_url as string,
+      shared_with_public: !!row.shared_with_public,
+      encrypted_access_token: row.encrypted_access_token as string | null,
+      sync_frequency: row.sync_frequency as string,
+      is_strictly_private: !!row.is_strictly_private,
       has_token: !!row.encrypted_access_token,
     }));
   } finally {
@@ -28,10 +32,8 @@ async function getExternalDataProviders(userId: any) {
 }
 
 async function getExternalDataProvidersByUserId(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  viewerUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any
+  viewerUserId: string,
+  targetUserId: string
 ) {
   // Use a user-scoped client so RLS policies (based on app.user_id) are applied for the viewer
   const client = await getClient(viewerUserId);
@@ -52,8 +54,7 @@ async function getExternalDataProvidersByUserId(
       [targetUserId]
     );
     const providers = await Promise.all(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      result.rows.map(async (row: any) => {
+      result.rows.map(async (row: Record<string, unknown>) => {
         let decryptedAppId = null;
         let decryptedAppKey = null;
         let decryptedGarthDump = null;
@@ -126,8 +127,9 @@ async function getExternalDataProvidersByUserId(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function createExternalDataProvider(providerData: any) {
+async function createExternalDataProvider(
+  providerData: Record<string, unknown>
+) {
   const client = await getClient(providerData.user_id); // User-specific operation
   try {
     log(
@@ -215,12 +217,9 @@ async function createExternalDataProvider(providerData: any) {
 // `undefined` leaves them unchanged (COALESCE semantics).
 
 async function updateExternalDataProvider(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  id: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateData: any
+  id: string,
+  userId: string,
+  updateData: Record<string, unknown>
 ) {
   const client = await getClient(userId); // User-specific operation
   try {
@@ -303,8 +302,7 @@ async function updateExternalDataProvider(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getExternalDataProviderById(providerId: any) {
+async function getExternalDataProviderById(providerId: string) {
   const client = await getSystemClient(); // System-level operation
   try {
     const result = await client.query(
@@ -391,10 +389,8 @@ async function getExternalDataProviderById(providerId: any) {
   }
 }
 async function getExternalDataProviderByUserIdAndProviderName(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  providerName: any
+  userId: string,
+  providerName: string
 ) {
   const client = await getClient(userId); // User-specific operation
   try {
@@ -488,10 +484,8 @@ async function getExternalDataProviderByUserIdAndProviderName(
 }
 
 async function checkExternalDataProviderOwnership(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  providerId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any
+  providerId: string,
+  userId: string
 ) {
   const client = await getClient(userId); // User-specific operation
   try {
@@ -504,8 +498,7 @@ async function checkExternalDataProviderOwnership(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteExternalDataProvider(id: any, userId: any) {
+async function deleteExternalDataProvider(id: string, userId: string) {
   // Use a user-scoped client so RLS will prevent unauthorized deletions
   const client = await getClient(userId);
   try {
@@ -518,8 +511,10 @@ async function deleteExternalDataProvider(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function updateProviderLastSync(providerId: any, lastSyncAt: any) {
+async function updateProviderLastSync(
+  providerId: string,
+  lastSyncAt: string | Date
+) {
   const client = await getSystemClient(); // System-level operation as it's updating a provider record directly
   try {
     const result = await client.query(
@@ -534,8 +529,7 @@ async function updateProviderLastSync(providerId: any, lastSyncAt: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getProvidersByType(providerType: any) {
+async function getProvidersByType(providerType: string) {
   const client = await getSystemClient(); // System-level operation to fetch all providers of a type
   try {
     const result = await client.query(

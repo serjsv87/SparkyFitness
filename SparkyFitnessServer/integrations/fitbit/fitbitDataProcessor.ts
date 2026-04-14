@@ -684,17 +684,15 @@ async function processFitbitActivities(
         'debug',
         `[fitbitDataProcessor] Date: ${date}, Activity Steps: ${totalActivitySteps}, Current Steps: ${currentSteps}`
       );
-      // Only upsert if our activity total is higher
-      // @ts-expect-error TS(2571): Object is of type 'unknown'.
-      if (totalActivitySteps > currentSteps) {
+      if ((totalActivitySteps as number) > currentSteps) {
         log(
           'info',
           `[fitbitDataProcessor] Fallback: Activity log sum (${totalActivitySteps}) > recorded daily total (${currentSteps}) for ${date}. Prioritizing granular activity data.`
         );
         await measurementRepository.upsertStepData(
-          userId,
-          createdByUserId,
-          totalActivitySteps,
+          userId as string,
+          createdByUserId as string,
+          totalActivitySteps as number,
           date
         );
       }
@@ -702,8 +700,7 @@ async function processFitbitActivities(
   } catch (err) {
     log(
       'error',
-      // @ts-expect-error TS(2571): Object is of type 'unknown'.
-      `[fitbitDataProcessor] Error in optimized step fallback: ${err.message}`
+      `[fitbitDataProcessor] Error in optimized step fallback: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 }

@@ -277,17 +277,18 @@ export async function pushNutritionToMFP(
     }
 
     return { status: 'success', date: data.date, responses };
-  } catch (error: any) {
-    if (error.response?.data) {
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response?.data) {
       log(
         'error',
         `pushNutritionToMFP: Error details: ${JSON.stringify(error.response.data)}`
       );
     }
+    const errorMessage = error instanceof Error ? error.message : String(error);
     log(
       'error',
       `pushNutritionToMFP: Fatal error for user ${userId}:`,
-      error.message
+      errorMessage
     );
     throw error;
   }
@@ -323,8 +324,8 @@ export async function pushWaterToMFP(
       });
       log('info', `pushWaterToMFP: Success! Status: ${resp.status}`);
       return resp.data;
-    } catch (error: any) {
-      if (error.response?.data) {
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response?.data) {
         log(
           'info',
           `pushWaterToMFP: POST failed with data: ${JSON.stringify(error.response.data)}`
@@ -332,17 +333,18 @@ export async function pushWaterToMFP(
       }
       throw error;
     }
-  } catch (error: any) {
-    if (error.response?.data) {
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response?.data) {
       log(
         'error',
         `pushWaterToMFP: Fatal error details: ${JSON.stringify(error.response.data)}`
       );
     }
+    const errorMessage = error instanceof Error ? error.message : String(error);
     log(
       'error',
       `pushWaterToMFP: Fatal error for user ${userId}:`,
-      error.message
+      errorMessage
     );
     throw error;
   }

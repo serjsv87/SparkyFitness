@@ -14,10 +14,11 @@ import {
 
 import * as bmrService from '../../services/bmrService.js';
 import { loadUserTimezone } from '../../utils/timezoneLoader.js';
+import { TelegramUser } from './telegramTranslations.js';
 
 export class TelegramAiService {
   static buildContextBlock(
-    user: any,
+    user: TelegramUser,
     exerciseSummary: string,
     nutritionContext: string = '',
     extraContext: string = '',
@@ -69,7 +70,7 @@ export class TelegramAiService {
   }
 
   private static formatFoodHistory(
-    recentFoods: any[],
+    recentFoods: Record<string, unknown>[],
     tz: string,
     today: string
   ): string {
@@ -78,10 +79,10 @@ export class TelegramAiService {
     }
 
     const yesterday = addDays(today, -1);
-    const foodsByDate: Record<string, any[]> = {};
-    recentFoods.forEach((food: any) => {
+    const foodsByDate: Record<string, Record<string, unknown>[]> = {};
+    recentFoods.forEach((food: Record<string, unknown>) => {
       const date = food.entry_date
-        ? instantToDay(food.entry_date, tz)
+        ? instantToDay(food.entry_date as string, tz)
         : 'Unknown';
       if (!foodsByDate[date]) foodsByDate[date] = [];
       foodsByDate[date].push(food);
@@ -120,9 +121,9 @@ export class TelegramAiService {
       }
 
       lines.push(`  📅 ${dayLabel}:`);
-      const grouped = new Map<string, any[]>();
+      const grouped = new Map<string, Record<string, unknown>[]>();
       for (const food of dayFoods) {
-        const mealType = (food.meal_type || 'snacks').toLowerCase();
+        const mealType = ((food.meal_type as string) || 'snacks').toLowerCase();
         if (!grouped.has(mealType)) grouped.set(mealType, []);
         grouped.get(mealType)!.push(food);
       }
@@ -131,7 +132,10 @@ export class TelegramAiService {
         const items = grouped.get(mealType);
         if (!items || items.length === 0) continue;
         const mealNames = items
-          .map((item) => item.food_name || item.name || 'Food')
+          .map(
+            (item) =>
+              (item.food_name as string) || (item.name as string) || 'Food'
+          )
           .join(', ');
         const mealTotal = items.reduce(
           (sum, item) => sum + Number(item.calories || 0),
@@ -179,7 +183,7 @@ export class TelegramAiService {
 
       let age = null;
       if (profile?.date_of_birth) {
-        const dob = new Date(profile.date_of_birth);
+        const dob = new Date(profile.date_of_birth as string);
         const ageDifMs = Date.now() - dob.getTime();
         const ageDate = new Date(ageDifMs);
         age = Math.abs(ageDate.getUTCFullYear() - 1970);
@@ -202,28 +206,33 @@ export class TelegramAiService {
         );
         const activityLevel = prefs.activity_level || 'sedentary';
         const multiplier =
-          (bmrService.ActivityMultiplier as any)[activityLevel] || 1.2;
+          (bmrService.ActivityMultiplier as Record<string, number>)[
+            activityLevel
+          ] || 1.2;
         tdee = bmr * multiplier;
       }
 
       const caloriesConsumed = todayFoods.reduce(
-        (sum: number, f: any) => sum + Number(f.calories || 0),
+        (sum: number, f: Record<string, unknown>) =>
+          sum + Number(f.calories || 0),
         0
       );
       const proteinConsumed = todayFoods.reduce(
-        (sum: number, f: any) => sum + Number(f.protein || 0),
+        (sum: number, f: Record<string, unknown>) =>
+          sum + Number(f.protein || 0),
         0
       );
       const carbsConsumed = todayFoods.reduce(
-        (sum: number, f: any) => sum + Number(f.carbs || 0),
+        (sum: number, f: Record<string, unknown>) => sum + Number(f.carbs || 0),
         0
       );
       const fatConsumed = todayFoods.reduce(
-        (sum: number, f: any) => sum + Number(f.fat || 0),
+        (sum: number, f: Record<string, unknown>) => sum + Number(f.fat || 0),
         0
       );
       const caloriesBurnedToday = todayExercises.reduce(
-        (sum: number, e: any) => sum + Number(e.calories_burned || 0),
+        (sum: number, e: Record<string, unknown>) =>
+          sum + Number(e.calories_burned || 0),
         0
       );
 
@@ -259,11 +268,11 @@ export class TelegramAiService {
       }
 
       return context;
-    } catch (e: any) {
+    } catch (error: unknown) {
       log(
         'error',
         '[TELEGRAM BOT] Error building nutrition context:',
-        e.message
+        error instanceof Error ? error.message : String(error)
       );
       return '';
     }

@@ -1,8 +1,7 @@
 import { getClient, getSystemClient } from '../db/poolManager.js';
 import { log } from '../config/logging.js';
 import { normalizeBarcode } from '../utils/foodUtils.js';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sanitizeGlycemicIndex(gi: any) {
+function sanitizeGlycemicIndex(gi: unknown) {
   const allowedGICategories = [
     'None',
     'Very Low',
@@ -17,14 +16,13 @@ function sanitizeGlycemicIndex(gi: any) {
     gi === null ||
     gi === undefined ||
     gi === '' ||
-    !allowedGICategories.includes(gi)
+    (typeof gi === 'string' && !allowedGICategories.includes(gi))
   ) {
     return null;
   }
-  return gi;
+  return gi as string;
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sanitizeNumeric(value: any) {
+function sanitizeNumeric(value: unknown) {
   if (
     value === null ||
     value === undefined ||
@@ -38,11 +36,13 @@ function sanitizeNumeric(value: any) {
   if (typeof value === 'string') {
     sanitizedValue = value.replace(/^["']|["']$/g, '');
   }
-  const num = parseFloat(sanitizedValue);
+  const num =
+    typeof sanitizedValue === 'number'
+      ? sanitizedValue
+      : parseFloat(String(sanitizedValue));
   return isNaN(num) ? null : num;
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sanitizeBoolean(value: any) {
+function sanitizeBoolean(value: unknown) {
   if (
     value === true ||
     value === 'TRUE' ||
@@ -64,16 +64,11 @@ function sanitizeBoolean(value: any) {
   return null;
 }
 async function searchFoods(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  name: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  exactMatch: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  broadMatch: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  checkCustom: any,
+  name: string,
+  userId: string,
+  exactMatch: boolean,
+  broadMatch: boolean,
+  checkCustom: boolean,
   limit = 10
 ) {
   const client = await getClient(userId); // User-specific operation
@@ -131,9 +126,9 @@ async function searchFoods(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function createFood(foodData: any) {
-  const client = await getClient(foodData.user_id); // User-specific operation
+async function createFood(foodData: Record<string, unknown>) {
+  const userId = foodData.user_id as string;
+  const client = await getClient(userId); // User-specific operation
   try {
     await client.query('BEGIN'); // Start transaction
     // 1. Create the food entry
@@ -226,9 +221,8 @@ async function createFood(foodData: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function findFoodByBarcode(barcode: any, userId: any) {
-  barcode = normalizeBarcode(barcode);
+async function findFoodByBarcode(barcode: string, userId: string) {
+  const normalizedBarcode = normalizeBarcode(barcode);
   const client = await getClient(userId);
   try {
     const result = await client.query(
@@ -263,15 +257,14 @@ async function findFoodByBarcode(barcode: any, userId: any) {
       LEFT JOIN food_variants fv ON f.id = fv.food_id AND fv.is_default = TRUE
       WHERE f.barcode = $1 AND f.user_id = $2
       LIMIT 1`,
-      [barcode, userId]
+      [normalizedBarcode, userId]
     );
     return result.rows[0] || null;
   } finally {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodById(foodId: any, userId: any) {
+async function getFoodById(foodId: string, userId: string) {
   const client = await getClient(userId); // User-specific operation (RLS will handle access)
   try {
     const result = await client.query(
@@ -312,8 +305,7 @@ async function getFoodById(foodId: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodOwnerId(foodId: any, userId: any) {
+async function getFoodOwnerId(foodId: string, userId: string) {
   const client = await getClient(userId); // User-specific operation (RLS will handle access)
   try {
     const foodResult = await client.query(
@@ -327,8 +319,11 @@ async function getFoodOwnerId(foodId: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function updateFood(id: any, userId: any, foodData: any) {
+async function updateFood(
+  id: string,
+  userId: string,
+  foodData: Record<string, unknown>
+) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -363,8 +358,7 @@ async function updateFood(id: any, userId: any, foodData: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteFood(id: any, userId: any) {
+async function deleteFood(id: string, userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -377,18 +371,12 @@ async function deleteFood(id: any, userId: any) {
   }
 }
 async function getFoodsWithPagination(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  searchTerm: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  foodFilter: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  limit: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  offset: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sortBy: any
+  searchTerm: string | null,
+  foodFilter: Record<string, unknown> | null,
+  authenticatedUserId: string,
+  limit: number,
+  offset: number,
+  sortBy: string | null
 ) {
   const client = await getClient(authenticatedUserId); // User-specific operation
   try {
@@ -466,12 +454,9 @@ async function getFoodsWithPagination(
 }
 
 async function countFoods(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  searchTerm: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  foodFilter: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any
+  searchTerm: string | null,
+  foodFilter: Record<string, unknown> | null,
+  authenticatedUserId: string
 ) {
   const client = await getClient(authenticatedUserId); // User-specific operation
   try {
@@ -495,8 +480,10 @@ async function countFoods(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodDeletionImpact(foodId: any, authenticatedUserId: any) {
+async function getFoodDeletionImpact(
+  foodId: string,
+  authenticatedUserId: string
+) {
   const client = await getClient(authenticatedUserId); // Client for authenticated user's RLS
   const systemClient = await getSystemClient(); // Client to bypass RLS for cross-user checks
   try {
@@ -599,8 +586,7 @@ async function getFoodDeletionImpact(foodId: any, authenticatedUserId: any) {
       otherUserMealFoodsCount +
       otherUserMealPlansCount +
       otherUserMealPlanTemplateAssignmentsCount;
-    // Get users who have family access to this food (if the food owner is the authenticated user)
-    let familySharedUsers = [];
+    let familySharedUsers: string[] = [];
     if (foodOwnerId === authenticatedUserId) {
       const familyAccessResult = await client.query(
         // Use client with RLS for family access check
@@ -613,8 +599,7 @@ async function getFoodDeletionImpact(foodId: any, authenticatedUserId: any) {
         [authenticatedUserId]
       );
       familySharedUsers = familyAccessResult.rows.map(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (row: any) => row.family_user_id
+        (row: Record<string, unknown>) => row.family_user_id as string
       );
     }
     return {
@@ -635,8 +620,7 @@ async function getFoodDeletionImpact(foodId: any, authenticatedUserId: any) {
     systemClient.release(); // Release the system client as well
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteFoodAndDependencies(foodId: any, userId: any) {
+async function deleteFoodAndDependencies(foodId: string, userId: string) {
   const client = await getClient(userId);
   try {
     await client.query('BEGIN');
@@ -707,36 +691,41 @@ async function deleteFoodAndDependencies(foodId: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function createFoodsInBulk(userId: any, foodDataArray: any) {
+async function createFoodsInBulk(
+  userId: string,
+  foodDataArray: Record<string, unknown>[]
+) {
   class DuplicateFoodError extends Error {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    duplicates: any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    constructor(message: any, duplicates: any) {
+    duplicates: any[];
+    constructor(message: string, duplicates: any[]) {
       super(message);
       this.name = 'DuplicateFoodError';
       this.duplicates = duplicates;
     }
   }
   // 1. --- Grouping incoming Variants by Food (name + brand)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const groupedFoods = foodDataArray.reduce((acc: any, variant: any) => {
-    const key = `${variant.name}|${variant.brand}`;
-    if (!acc[key]) {
-      acc[key] = {
-        name: variant.name,
-        brand: variant.brand,
-        is_custom: true,
-        user_id: userId,
-        shared_with_public: variant.shared_with_public || false,
-        is_quick_food: variant.is_quick_food || false,
-        variants: [],
-      };
-    }
-    acc[key].variants.push(variant);
-    return acc;
-  }, {});
+  // 1. --- Grouping incoming Variants by Food (name + brand)
+  const groupedFoods = foodDataArray.reduce(
+    (acc: Record<string, unknown>, variant: Record<string, unknown>) => {
+      const name = variant.name as string;
+      const brand = variant.brand as string;
+      const key = `${name}|${brand}`;
+      if (!acc[key]) {
+        acc[key] = {
+          name,
+          brand,
+          is_custom: true,
+          user_id: userId,
+          shared_with_public: (variant.shared_with_public as boolean) || false,
+          is_quick_food: (variant.is_quick_food as boolean) || false,
+          variants: [],
+        };
+      }
+      (acc[key] as { variants: unknown[] }).variants.push(variant);
+      return acc;
+    },
+    {}
+  );
   const foodsToCreate = Object.values(groupedFoods);
   if (foodsToCreate.length === 0) {
     return {
@@ -873,8 +862,7 @@ async function createFoodsInBulk(userId: any, foodDataArray: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodsNeedingReview(userId: any) {
+async function getFoodsNeedingReview(userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -906,8 +894,7 @@ async function getFoodsNeedingReview(userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function clearUserIgnoredUpdate(userId: any, variantId: any) {
+async function clearUserIgnoredUpdate(userId: string, variantId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     await client.query(

@@ -1,6 +1,9 @@
 import { getClient } from '../db/poolManager.js';
 import { log } from '../config/logging.js';
-import { CALORIE_CALCULATION_CONSTANTS } from '@workspace/shared';
+import {
+  CALORIE_CALCULATION_CONSTANTS,
+  type ExerciseSessionResponse,
+} from '@workspace/shared';
 // SECURITY: Whitelist allowed measurement columns to prevent SQL injection via dynamic keys
 const ALLOWED_CHECK_IN_COLUMNS = [
   'weight',
@@ -15,14 +18,10 @@ const ALLOWED_CHECK_IN_COLUMNS = [
 const WATER_ADOPTION_TOLERANCE_ML = 5;
 
 async function upsertStepData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any
+  userId: string,
+  actingUserId: string,
+  value: number,
+  date: string
 ) {
   const client = await getClient(actingUserId); // User-specific operation, using actingUserId for RLS context
   try {
@@ -50,14 +49,10 @@ async function upsertStepData(
   }
 }
 async function upsertWaterData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  waterMl: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any,
+  userId: string,
+  actingUserId: string,
+  waterMl: number,
+  date: string,
   source = 'manual'
 ) {
   const client = await getClient(actingUserId);
@@ -107,15 +102,24 @@ async function upsertWaterData(
         updated_at = now(),
         updated_by_user_id = $5
       RETURNING *`;
-    const values = [userId, date, waterMl, source, actingUserId];
+    const values: (string | number)[] = [
+      userId,
+      date,
+      waterMl,
+      source,
+      actingUserId,
+    ];
     const result = await client.query(query, values);
     return result.rows[0];
   } finally {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getWaterIntakeByDate(userId: any, date: any, source = null) {
+async function getWaterIntakeByDate(
+  userId: string,
+  date: string,
+  source: string | null = null
+) {
   const client = await getClient(userId);
   try {
     let query;
@@ -136,8 +140,7 @@ async function getWaterIntakeByDate(userId: any, date: any, source = null) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getWaterIntakeEntryById(id: any, userId: any) {
+async function getWaterIntakeEntryById(id: string, userId: string) {
   const client = await getClient(userId);
   try {
     const result = await client.query(
@@ -149,8 +152,7 @@ async function getWaterIntakeEntryById(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getWaterIntakeEntryOwnerId(id: any, userId: any) {
+async function getWaterIntakeEntryOwnerId(id: string, userId: string) {
   const client = await getClient(userId);
   try {
     const entryResult = await client.query(
@@ -164,14 +166,10 @@ async function getWaterIntakeEntryOwnerId(id: any, userId: any) {
 }
 
 async function updateWaterIntake(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  id: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateData: any
+  id: string,
+  userId: string,
+  actingUserId: string,
+  updateData: { water_ml?: number; entry_date?: string; source?: string }
 ) {
   const client = await getClient(actingUserId);
   try {
@@ -198,8 +196,7 @@ async function updateWaterIntake(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteWaterIntake(id: any, userId: any) {
+async function deleteWaterIntake(id: string, userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -212,20 +209,16 @@ async function deleteWaterIntake(id: any, userId: any) {
   }
 }
 async function upsertCheckInMeasurements(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  measurements: any
+  userId: string,
+  actingUserId: string,
+  entryDate: string,
+  measurements: Record<string, unknown>
 ) {
   console.log('Incoming measurements:', measurements);
   const client = await getClient(actingUserId); // User-specific operation, using actingUserId for RLS context
   try {
     let query;
-    let values;
+    let values: (string | number)[] = [];
     // Filter out 'id' from measurements to prevent it from being upserted into numeric columns
     const filteredMeasurements = { ...measurements };
     delete filteredMeasurements.id;
@@ -256,7 +249,7 @@ async function upsertCheckInMeasurements(
       // Add updated_by_user_id to update query
       query = `UPDATE check_in_measurements SET ${fields}, updated_at = now(), updated_by_user_id = $${measurementKeys.length + 1} WHERE id = $${measurementKeys.length + 2} RETURNING *`;
       values = [
-        ...measurementKeys.map((key) => filteredMeasurements[key]),
+        ...measurementKeys.map((key) => measurements[key] as string | number),
         actingUserId,
         id,
       ];
@@ -275,7 +268,7 @@ async function upsertCheckInMeasurements(
       values = [
         userId,
         entryDate,
-        ...measurementKeys.map((key) => filteredMeasurements[key]),
+        ...measurementKeys.map((key) => measurements[key] as string | number),
         actingUserId,
         actingUserId,
         new Date().toISOString(),
@@ -289,8 +282,7 @@ async function upsertCheckInMeasurements(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getCheckInMeasurementsByDate(userId: any, date: any) {
+async function getCheckInMeasurementsByDate(userId: string, date: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -304,10 +296,8 @@ async function getCheckInMeasurementsByDate(userId: any, date: any) {
 }
 
 async function getLatestCheckInMeasurementsOnOrBeforeDate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any
+  userId: string,
+  date: string
 ) {
   const client = await getClient(userId); // User-specific operation
   try {
@@ -324,14 +314,10 @@ async function getLatestCheckInMeasurementsOnOrBeforeDate(
   }
 }
 async function updateCheckInMeasurements(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateData: any
+  userId: string,
+  actingUserId: string,
+  entryDate: string,
+  updateData: Record<string, unknown>
 ) {
   log(
     'info',
@@ -353,8 +339,13 @@ async function updateCheckInMeasurements(
     // Correctly construct the values array: first the values for the SET clause, then actingUserId (for audit), then userId, then entryDate
     const updateValues = Object.keys(updateData)
       .filter((key) => ALLOWED_CHECK_IN_COLUMNS.includes(key))
-      .map((key) => updateData[key]);
-    const values = [...updateValues, actingUserId, userId, entryDate];
+      .map((key) => updateData[key] as string | number);
+    const values: (string | number)[] = [
+      ...updateValues,
+      actingUserId,
+      userId,
+      entryDate,
+    ];
     // Add updated_by_user_id to update query
     const query = `
       UPDATE check_in_measurements
@@ -383,8 +374,7 @@ async function updateCheckInMeasurements(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteCheckInMeasurements(id: any, userId: any) {
+async function deleteCheckInMeasurements(id: string, userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -396,8 +386,7 @@ async function deleteCheckInMeasurements(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getCustomCategories(userId: any) {
+async function getCustomCategories(userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -409,8 +398,15 @@ async function getCustomCategories(userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function createCustomCategory(categoryData: any) {
+async function createCustomCategory(categoryData: {
+  user_id: string;
+  name: string;
+  display_name?: string | null;
+  frequency: string;
+  measurement_type: string;
+  data_type?: string | null;
+  created_by_user_id: string;
+}) {
   const client = await getClient(categoryData.created_by_user_id); // User-specific operation, using created_by_user_id for RLS context
   try {
     const result = await client.query(
@@ -433,14 +429,16 @@ async function createCustomCategory(categoryData: any) {
 }
 
 async function updateCustomCategory(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  id: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateData: any
+  id: string,
+  userId: string,
+  actingUserId: string,
+  updateData: {
+    name?: string;
+    display_name?: string | null;
+    frequency?: string;
+    measurement_type?: string;
+    data_type?: string | null;
+  }
 ) {
   const client = await getClient(actingUserId); // User-specific operation, using actingUserId for RLS context
   try {
@@ -471,8 +469,7 @@ async function updateCustomCategory(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteCustomCategory(id: any, userId: any) {
+async function deleteCustomCategory(id: string, userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -484,8 +481,7 @@ async function deleteCustomCategory(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getCustomCategoryOwnerId(id: any, userId: any) {
+async function getCustomCategoryOwnerId(id: string, userId: string) {
   const client = await getClient(userId); // User-specific operation (RLS will handle access)
   try {
     const result = await client.query(
@@ -499,14 +495,10 @@ async function getCustomCategoryOwnerId(id: any, userId: any) {
 }
 
 async function getCustomMeasurementEntries(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  limit: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  orderBy: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  filterObj: any
+  userId: string,
+  limit: string | undefined,
+  orderBy: string | undefined,
+  filterObj: Record<string, unknown>
 ) {
   // Renamed filter to filterObj
   const client = await getClient(userId); // User-specific operation
@@ -524,14 +516,14 @@ async function getCustomMeasurementEntries(
       JOIN custom_categories cc ON cm.category_id = cc.id
       WHERE cm.user_id = $1 AND cm.value IS NOT NULL
     `;
-    const queryParams = [userId];
+    const queryParams: (string | number | null)[] = [userId];
     let paramIndex = 2;
     // RLS will handle filtering by user_id, but we keep it here for explicit filtering
     // in case RLS is disabled or for clarity.
     if (filterObj) {
       if (filterObj.category_id) {
         query += ` AND cm.category_id = $${paramIndex}`;
-        queryParams.push(filterObj.category_id);
+        queryParams.push(filterObj.category_id as string | number | null);
         paramIndex++;
       }
       // Existing filter logic for 'value.gt.X' - needs to be adapted for filterObj
@@ -571,8 +563,7 @@ async function getCustomMeasurementEntries(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getCustomMeasurementEntriesByDate(userId: any, date: any) {
+async function getCustomMeasurementEntriesByDate(userId: string, date: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -597,12 +588,9 @@ async function getCustomMeasurementEntriesByDate(userId: any, date: any) {
 }
 
 async function getCheckInMeasurementsByDateRange(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any
+  userId: string,
+  startDate: string,
+  endDate: string
 ) {
   log(
     'info',
@@ -624,21 +612,22 @@ async function getCheckInMeasurementsByDateRange(
   }
 }
 async function getCustomMeasurementsByDateRange(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  categoryId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any,
-  source = null
+  userId: string,
+  categoryId: string,
+  startDate: string,
+  endDate: string,
+  source: string | null = null
 ) {
   const client = await getClient(userId); // User-specific operation
   try {
     let query =
       'SELECT category_id, entry_date AS date, entry_hour AS hour, value, entry_timestamp AS timestamp FROM custom_measurements WHERE user_id = $1 AND category_id = $2 AND entry_date BETWEEN $3 AND $4';
-    const queryParams = [userId, categoryId, startDate, endDate];
+    const queryParams: (string | number)[] = [
+      userId,
+      categoryId,
+      startDate,
+      endDate,
+    ];
     if (source) {
       query += ' AND source = $5';
       queryParams.push(source);
@@ -652,30 +641,21 @@ async function getCustomMeasurementsByDateRange(
   }
 }
 async function upsertCustomMeasurement(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  categoryId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryHour: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryTimestamp: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  notes: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  frequency: any,
+  userId: string,
+  actingUserId: string,
+  categoryId: string,
+  value: number | string | boolean,
+  entryDate: string,
+  entryHour: number | null,
+  entryTimestamp: string,
+  notes: string | null,
+  frequency: string,
   source = 'manual'
 ) {
   const client = await getClient(actingUserId); // User-specific operation, using actingUserId for RLS context
   try {
-    let query;
-    let values;
+    let query: string;
+    let values: (string | number | boolean | null)[] = [];
     // Normalize entry_hour and entry_timestamp for 'Daily' frequency to prevent duplicates
     let normalizedEntryHour = entryHour;
     let normalizedEntryTimestamp = entryTimestamp;
@@ -712,7 +692,12 @@ async function upsertCustomMeasurement(
         SELECT id FROM custom_measurements
         WHERE user_id = $1 AND category_id = $2 AND entry_date = $3 AND source = $4
       `;
-      const existingEntryValues = [userId, categoryId, entryDate, source];
+      const existingEntryValues: (string | number | null)[] = [
+        userId,
+        categoryId,
+        entryDate,
+        source,
+      ];
       if (frequency === 'Hourly' && normalizedEntryHour !== null) {
         existingEntryQuery += ` AND entry_hour = $${existingEntryValues.length + 1}`;
         existingEntryValues.push(normalizedEntryHour);
@@ -768,8 +753,7 @@ async function upsertCustomMeasurement(
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteCustomMeasurement(id: any, userId: any) {
+async function deleteCustomMeasurement(id: string, userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -789,8 +773,11 @@ async function deleteCustomMeasurement(id: any, userId: any) {
  * @param {Array} sessions - exercise sessions for the date (ExerciseSessionResponse[])
  * @returns {Promise<number>} step calories burned
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getStepCaloriesForDate(userId: any, date: any, sessions: any) {
+async function getStepCaloriesForDate(
+  userId: string,
+  date: string,
+  sessions: ExerciseSessionResponse[]
+) {
   const client = await getClient(userId);
   try {
     const [checkInResult, weightResult, heightResult] = await Promise.all([
@@ -818,21 +805,23 @@ async function getStepCaloriesForDate(userId: any, date: any, sessions: any) {
     const heightCm =
       parseFloat(heightResult.rows[0]?.height) ||
       CALORIE_CALCULATION_CONSTANTS.DEFAULT_HEIGHT_CM;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const activitySteps = sessions.reduce((sum: any, s: any) => {
-      if (s.type === 'preset') {
-        return (
-          sum +
-          (s.exercises ?? []).reduce(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (eSum: any, e: any) =>
-              eSum + (parseInt(String(e.steps ?? '0'), 10) || 0),
-            0
-          )
-        );
-      }
-      return sum + (parseInt(String(s.steps ?? '0'), 10) || 0);
-    }, 0);
+    const activitySteps = sessions.reduce(
+      (sum: number, s: ExerciseSessionResponse) => {
+        if (s.type === 'preset') {
+          const exercises = (s.exercises as any[]) ?? [];
+          return (
+            sum +
+            exercises.reduce(
+              (eSum: number, e: any) =>
+                eSum + (parseInt(String(e.steps ?? '0'), 10) || 0),
+              0
+            )
+          );
+        }
+        return sum + (parseInt(String(s.steps ?? '0'), 10) || 0);
+      },
+      0
+    );
     const backgroundSteps = Math.max(0, totalSteps - activitySteps);
     const strideLengthM =
       (heightCm * CALORIE_CALCULATION_CONSTANTS.STRIDE_LENGTH_MULTIPLIER) / 100;
@@ -846,8 +835,7 @@ async function getStepCaloriesForDate(userId: any, date: any, sessions: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getLatestMeasurement(userId: any) {
+async function getLatestMeasurement(userId: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -862,8 +850,7 @@ async function getLatestMeasurement(userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getCustomMeasurementOwnerId(id: any, userId: any) {
+async function getCustomMeasurementOwnerId(id: string, userId: string) {
   const client = await getClient(userId); // User-specific operation (RLS will handle access)
   try {
     const result = await client.query(
@@ -875,8 +862,10 @@ async function getCustomMeasurementOwnerId(id: any, userId: any) {
     client.release();
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getMostRecentMeasurement(userId: any, measurementType: any) {
+async function getMostRecentMeasurement(
+  userId: string,
+  measurementType: string
+) {
   // SECURITY: Whitelist allowed measurement columns to prevent SQL injection via dynamic column names
   if (!ALLOWED_CHECK_IN_COLUMNS.includes(measurementType)) {
     throw new Error(`Invalid measurement type requested: ${measurementType}`);

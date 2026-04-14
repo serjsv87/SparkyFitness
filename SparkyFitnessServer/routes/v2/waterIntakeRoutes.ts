@@ -301,12 +301,12 @@ const upsertWaterIntakeHandler: RequestHandler = async (req, res, next) => {
     }
     const { entry_date, change_drinks, container_id } = bodyResult.data;
     const result = await measurementService.upsertWaterIntake(
-      req.userId,
+      req.userId as string,
 
-      req.originalUserId || req.userId,
-      entry_date,
-      change_drinks,
-      container_id
+      (req.originalUserId || req.userId) as string,
+      entry_date as string,
+      change_drinks as number,
+      container_id ?? null
     );
     res.status(200).json(result);
   } catch (error: unknown) {

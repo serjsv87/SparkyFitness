@@ -1,7 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { log } from '../../config/logging.js';
 import globalSettingsRepository from '../../models/globalSettingsRepository.js';
-import * as chatService from '../../services/chatService.js';
+import chatService, { ChatMessage } from '../../services/chatService.js';
 import * as chatRepository from '../../models/chatRepository.js';
 import * as exerciseEntry from '../../models/exerciseEntry.js';
 import * as foodEntryRepository from '../../models/foodEntry.js';
@@ -66,12 +66,12 @@ class TelegramBotService {
         `[TELEGRAM BOT] Bot active: ${settings.telegram_bot_name || 'SparkyFitnessBot'}`
       );
       this.setupHandlers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       log('error', '[TELEGRAM BOT] Initialization error:', error);
     }
   }
 
-  handleUpdate(update: any): void {
+  handleUpdate(update: TelegramBot.Update): void {
     if (this.bot) {
       this.bot.processUpdate(update);
     }
@@ -120,8 +120,11 @@ class TelegramBotService {
           user.language
         );
         this.bot!.sendMessage(chatId, profileText, { parse_mode: 'HTML' });
-      } catch (e: any) {
-        this.bot!.sendMessage(chatId, `❌ Error: ${e.message}`);
+      } catch (error: unknown) {
+        this.bot!.sendMessage(
+          chatId,
+          `❌ Error: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     });
 
@@ -220,8 +223,11 @@ class TelegramBotService {
             user.language
           );
           this.bot!.sendMessage(chatId, profileText, { parse_mode: 'HTML' });
-        } catch (e: any) {
-          this.bot!.sendMessage(chatId, `❌ Error: ${e.message}`);
+        } catch (error: unknown) {
+          this.bot!.sendMessage(
+            chatId,
+            `❌ Error: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
         return;
       }
@@ -236,7 +242,9 @@ class TelegramBotService {
           user.id,
           today
         );
-        this.bot!.sendMessage(chatId, intentResult, { parse_mode: 'HTML' });
+        this.bot!.sendMessage(chatId, intentResult as string, {
+          parse_mode: 'HTML',
+        });
         return;
       }
 
@@ -275,14 +283,14 @@ class TelegramBotService {
 
           this.activeGarminSyncs.add(chatId);
 
-          const statusMsg = await (this.bot!.sendMessage(
+          const statusMsg = (await this.bot!.sendMessage(
             chatId,
             '🔄 Починаємо синхронізацію з Garmin (за 7 днів)...',
             { disable_notification: true }
-          ) as any);
+          )) as TelegramBot.Message;
 
           try {
-            const tz = (user as any).timezone || 'UTC';
+            const tz = (user as { timezone?: string }).timezone || 'UTC';
             const today = todayInZone(tz);
             let successCount = 0;
             const totalDays = 7;
@@ -324,11 +332,13 @@ class TelegramBotService {
                 message_id: statusMsg.message_id,
               }
             ).catch(() => {});
-          } catch (error: any) {
-            log('error', `[TELEGRAM BOT] Garmin sync error: ${error.message}`);
+          } catch (error: unknown) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            log('error', `[TELEGRAM BOT] Garmin sync error: ${errorMessage}`);
             await this.bot!.sendMessage(
               chatId,
-              `❌ Помилка синхронізації Garmin: ${error.message}. Переконайтеся, що ваш акаунт підключено у веб-додатку.`,
+              `❌ Помилка синхронізації Garmin: ${errorMessage}. Переконайтеся, що ваш акаунт підключено у веб-додатку.`,
               { disable_notification: true }
             ).catch(() => {});
           } finally {
@@ -345,16 +355,16 @@ class TelegramBotService {
           }
 
           this.activeGarminSyncs.add(chatId); // Reusing the sync lock
-          const statusMsg = await (this.bot!.sendMessage(
+          const statusMsg = (await this.bot!.sendMessage(
             chatId,
             `${t.syncMFPInProgress} (за 7 днів)...`,
             { disable_notification: true }
-          ) as any);
+          )) as TelegramBot.Message;
 
           try {
             const mfpSyncService =
               await import('../../services/mfpSyncService.js');
-            const tz = (user as any).timezone || 'UTC';
+            const tz = (user as { timezone?: string }).timezone || 'UTC';
             const today = todayInZone(tz);
             const totalDays = 7;
             let successCount = 0;
@@ -393,10 +403,12 @@ class TelegramBotService {
                 message_id: statusMsg.message_id,
               }
             ).catch(() => {});
-          } catch (error: any) {
-            log('error', `[TELEGRAM BOT] MFP sync error: ${error.message}`);
+          } catch (error: unknown) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            log('error', `[TELEGRAM BOT] MFP sync error: ${errorMessage}`);
             await this.bot!.editMessageText(
-              `❌ ${t.syncMFPError.replace('{{error}}', error.message)}`,
+              `❌ ${t.syncMFPError.replace('{{error}}', errorMessage)}`,
               {
                 chat_id: chatId,
                 message_id: statusMsg.message_id,
@@ -421,8 +433,9 @@ class TelegramBotService {
             query.message!.message_id
           ).catch(() => false);
           await this.handleDirectTodayLog(chatId, user);
-        } catch (e: any) {
-          log('error', `[TELEGRAM BOT] Delete food error: ${e.message}`);
+        } catch (e: unknown) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          log('error', `[TELEGRAM BOT] Delete food error: ${errorMessage}`);
           await this.bot!.answerCallbackQuery(query.id, {
             text: t.deleteError,
             show_alert: true,
@@ -655,7 +668,7 @@ class TelegramBotService {
       const contextMode = this.classifyContextMode(msg);
       const historyLimit = contextMode === 'chat' ? 3 : 7;
       const chatHistory = (
-        await chatRepository.getChatHistoryByUserId(user.id)
+        (await chatRepository.getChatHistoryByUserId(user.id)) as any[]
       ).slice(-historyLimit);
       const includeFoodContext =
         contextMode === 'food' || contextMode === 'analysis';
@@ -675,16 +688,23 @@ class TelegramBotService {
       const userPlan = includePlanContext ? aiService.system_prompt || '' : '';
 
       const processAiTurn = async (forceDataRequest: string | null = null) => {
-        const historyContext = chatHistory.map((h: any) => {
-          const ts = h.created_at
-            ? new Date(h.created_at).toLocaleString('uk-UA', {
-                timeZone: (user as any).timezone || 'UTC',
+        const historyContext = chatHistory.map((h: unknown) => {
+          const item = h as {
+            created_at?: string;
+            message_type: string;
+            content: string;
+          };
+          const ts = item.created_at
+            ? new Date(item.created_at).toLocaleString('uk-UA', {
+                timeZone: (user as { timezone?: string }).timezone || 'UTC',
                 hour12: false,
               })
             : '';
           return {
-            role: h.message_type === 'user' ? 'user' : 'assistant',
-            content: ts ? `[${ts}] ${h.content}` : h.content,
+            role: (item.message_type === 'user' ? 'user' : 'assistant') as
+              | 'user'
+              | 'assistant',
+            content: ts ? `[${ts}] ${item.content}` : item.content,
           };
         });
 
@@ -709,14 +729,17 @@ class TelegramBotService {
             `--- SYSTEM CONTEXT ---\n${contextBlock}\n` +
             `--- HISTORY (${historyContext.length} msgs) ---\n` +
             historyContext
-              .map((m: any, i: number) => `[${i + 1}] ${m.role}: ${m.content}`)
+              .map(
+                (m: { role: string; content: string }, i: number) =>
+                  `[${i + 1}] ${m.role}: ${m.content}`
+              )
               .join('\n') +
             `\n--- USER MESSAGE ---\n${forceDataRequest ? forceDataRequest : JSON.stringify(contentParts)}`
         );
 
         const response = await chatService.processChatMessage(
-          fullMessages,
-          aiService.id,
+          fullMessages as ChatMessage[],
+          aiService.id as string,
           user.id
         );
 
@@ -736,10 +759,10 @@ class TelegramBotService {
           return this.handleDataRequest(
             chatId,
             user,
-            response.data,
+            (response as any).data,
             msg.text || '',
             aiService?.id || '',
-            chatHistory
+            chatHistory as any
           );
         }
         return response;
@@ -747,8 +770,8 @@ class TelegramBotService {
 
       const response = await processAiTurn();
 
-      if (response && (response.text || response.content)) {
-        let rawReplyText = response.text || response.content;
+      if (response && ((response as any).text || (response as any).content)) {
+        let rawReplyText = (response as any).text || (response as any).content;
         // Guard: if AI returned raw JSON, extract the response field
         if (rawReplyText.trimStart().startsWith('{')) {
           try {
@@ -761,7 +784,7 @@ class TelegramBotService {
         }
         // Telegram HTML mode doesn't support <br> — replace with newlines
         const replyText = rawReplyText.replace(/<br\s*\/?>/gi, '\n');
-        const replyWithUsage = `${replyText}${this.formatUsageFooter(response.usage)}`;
+        const replyWithUsage = `${replyText}${this.formatUsageFooter((response as any).usage)}`;
         await chatRepository.saveChatMessage(
           user.id,
           msg.text || '[Multi-modal]',
@@ -771,15 +794,18 @@ class TelegramBotService {
           user.id,
           replyText,
           'assistant',
-          response.usage ? { usage: response.usage } : null
+          (response as any).usage ? { usage: (response as any).usage } : null
         );
 
         await this.bot!.sendMessage(chatId, replyWithUsage, {
           parse_mode: 'HTML',
         });
 
-        if (response.intent && response.intent !== 'request_data') {
-          await this.tryExecuteIntent(chatId, user, response);
+        if (
+          (response as any).intent &&
+          (response as any).intent !== 'request_data'
+        ) {
+          await this.tryExecuteIntent(chatId, user, response as any);
         }
       }
     } catch (error: unknown) {
@@ -796,19 +822,19 @@ class TelegramBotService {
   private async handleDataRequest(
     chatId: number,
     user: TelegramUser,
-    dataParams: any,
+    dataParams: Record<string, unknown>,
     originalMsgText: string,
     aiServiceId: string,
-    chatHistory: any[]
-  ): Promise<any> {
+    chatHistory: Record<string, unknown>[]
+  ): Promise<unknown> {
     this.bot!.sendChatAction(chatId, 'typing');
     const typingInterval = setInterval(() => {
       this.bot!.sendChatAction(chatId, 'typing').catch(() => {});
     }, 4000);
 
     try {
-      const type = dataParams?.type || 'exercise_history';
-      const days = parseInt(dataParams?.days) || 14;
+      const type = (dataParams?.type as string) || 'exercise_history';
+      const days = parseInt(dataParams?.days as string) || 14;
       let fetchedDataText = '';
 
       const tz = await loadUserTimezone(user.id);
@@ -826,11 +852,21 @@ class TelegramBotService {
           fetchedDataText = `No exercises found in the last ${days} days.`;
         } else {
           fetchedDataText = exercises
-            .map((ex: any) => {
-              const date = ex.entry_date
-                ? instantToDay(ex.entry_date, (user as any).timezone || 'UTC')
+            .map((ex: unknown) => {
+              const item = ex as {
+                entry_date?: string;
+                exercise_name?: string;
+                name?: string;
+                duration_minutes: number;
+                calories: number;
+              };
+              const date = item.entry_date
+                ? instantToDay(
+                    item.entry_date,
+                    (user as { timezone?: string }).timezone || 'UTC'
+                  )
                 : 'Unknown';
-              return `- ${date}: ${ex.exercise_name || ex.name} (${ex.duration_minutes}m, ${Math.round(ex.calories)}kcal)`;
+              return `- ${date}: ${item.exercise_name || item.name} (${item.duration_minutes}m, ${Math.round(item.calories)}kcal)`;
             })
             .join('\n');
         }
@@ -844,8 +880,13 @@ class TelegramBotService {
           fetchedDataText = `No food logs found in the last ${days} days.`;
         } else {
           fetchedDataText = foods
-            .map((f: any) => {
-              return `- ${f.entry_date}: ${f.food_name} (${Math.round(f.calories)}kcal)`;
+            .map((f: unknown) => {
+              const item = f as {
+                entry_date: string;
+                food_name: string;
+                calories: number;
+              };
+              return `- ${item.entry_date}: ${item.food_name} (${Math.round(item.calories)}kcal)`;
             })
             .join('\n');
         }
@@ -865,16 +906,21 @@ class TelegramBotService {
         extraContext
       );
 
-      const historyContext = chatHistory.map((h: any) => {
-        const ts = h.created_at
-          ? new Date(h.created_at).toLocaleString('uk-UA', {
-              timeZone: (user as any).timezone || 'UTC',
+      const historyContext = chatHistory.map((h: unknown) => {
+        const item = h as {
+          created_at?: string;
+          message_type: string;
+          content: string;
+        };
+        const ts = item.created_at
+          ? new Date(item.created_at).toLocaleString('uk-UA', {
+              timeZone: (user as { timezone?: string }).timezone || 'UTC',
               hour12: false,
             })
           : '';
         return {
-          role: h.message_type === 'user' ? 'user' : 'assistant',
-          content: ts ? `[${ts}] ${h.content}` : h.content,
+          role: item.message_type === 'user' ? 'user' : 'assistant',
+          content: ts ? `[${ts}] ${item.content}` : item.content,
         };
       });
 
@@ -896,7 +942,7 @@ class TelegramBotService {
       );
 
       const response = await chatService.processChatMessage(
-        fullMessages,
+        fullMessages as ChatMessage[],
         aiServiceId,
         user.id
       );
@@ -921,29 +967,29 @@ class TelegramBotService {
   async tryExecuteIntent(
     chatId: number,
     user: TelegramUser,
-    response: any
+    response: Record<string, unknown>
   ): Promise<void> {
     try {
       const tz = await loadUserTimezone(user.id);
       const today = todayInZone(tz);
 
       const result = await executeIntent(
-        response.intent,
-        response.data,
-        response.entryDate,
+        response.intent as string,
+        (response.data || {}) as Record<string, unknown>,
+        response.entryDate as string | null,
         user.id,
         today
       );
 
       if (typeof result === 'string') {
         await this.bot!.sendMessage(chatId, result, { parse_mode: 'HTML' });
-      } else if (result && result.message) {
-        await this.bot!.sendMessage(chatId, result.message, {
+      } else if (result && (result as any).message) {
+        await this.bot!.sendMessage(chatId, (result as any).message, {
           parse_mode: 'HTML',
         });
-      } else if (result && result.intent === 'confirm_deletion') {
+      } else if (result && (result as any).intent === 'confirm_deletion') {
         const t = getTranslations(user.language);
-        const matches = result.matches || [];
+        const matches = (result as any).matches || [];
         if (matches.length === 0) return;
 
         let confirmText = `❓ <b>${t.deleteConfirm}</b>\n\n`;
@@ -1002,11 +1048,11 @@ class TelegramBotService {
       if (todayFood.length === 0) {
         return this.bot!.sendMessage(
           chatId,
-          'Жодних записів про їжу за сьогодні.'
+          'No food entries for today.'
         ) as unknown as void;
       }
 
-      let text = `🍴 <b>Щоденник за сьогодні (${today}):</b>\n\n`;
+      let text = `🍴 <b>Today's Diary (${today}):</b>\n\n`;
       let totalCals = 0;
 
       const grouped: { [key: string]: any[] } = {
@@ -1016,24 +1062,25 @@ class TelegramBotService {
         snacks: [],
       };
 
-      todayFood.forEach((f: any) => {
-        const type = f.meal_type || 'snacks';
-        if (grouped[type]) grouped[type].push(f);
-        else grouped.snacks.push(f);
-        totalCals += Number(f.calories || 0);
+      todayFood.forEach((f: unknown) => {
+        const item = f as { meal_type?: string; calories?: number };
+        const type = item.meal_type || 'snacks';
+        if (grouped[type]) grouped[type].push(item);
+        else grouped.snacks.push(item);
+        totalCals += Number(item.calories || 0);
       });
 
       const mealNames: { [key: string]: string } = {
-        breakfast: 'Сніданок',
-        lunch: 'Обід',
-        dinner: 'Вечеря',
-        snacks: 'Перекуси',
+        breakfast: 'Breakfast',
+        lunch: 'Lunch',
+        dinner: 'Dinner',
+        snacks: 'Snacks',
       };
 
       for (const [type, items] of Object.entries(grouped)) {
         if (items.length > 0) {
           text += `<b>${mealNames[type]}:</b>\n`;
-          items.forEach((i) => {
+          items.forEach((i: any) => {
             const cal = i.calories ? `${Math.round(i.calories)} ккал` : '';
             text += ` • ${i.food_name || i.name} — ${i.quantity} ${i.unit} ${cal}\n`;
           });
@@ -1046,7 +1093,7 @@ class TelegramBotService {
       const buttons: TelegramBot.InlineKeyboardButton[][] = [];
       for (const [, items] of Object.entries(grouped)) {
         if (items.length > 0) {
-          items.forEach((i) => {
+          items.forEach((i: any) => {
             buttons.push([
               {
                 text: `🗑️ ${i.food_name || i.name} (${Math.round(i.calories)} kcal)`,
@@ -1061,8 +1108,11 @@ class TelegramBotService {
         parse_mode: 'HTML',
         reply_markup: { inline_keyboard: buttons },
       });
-    } catch (e: any) {
-      this.bot!.sendMessage(chatId, `❌ Помилка: ${e.message}`);
+    } catch (e: unknown) {
+      this.bot!.sendMessage(
+        chatId,
+        `❌ Помилка: ${e instanceof Error ? e.message : String(e)}`
+      );
     }
   }
 
@@ -1090,12 +1140,18 @@ class TelegramBotService {
         ) as unknown as void;
       }
 
-      exercises = exercises.filter((ex: any) => {
-        const name = (ex.exercise_name || ex.name || '').toLowerCase();
+      exercises = exercises.filter((ex: unknown) => {
+        const item = ex as {
+          exercise_name?: string;
+          name?: string;
+          duration_minutes?: number;
+          distance?: number;
+        };
+        const name = (item.exercise_name || item.name || '').toLowerCase();
         if (
           name === 'active calories' &&
-          !ex.duration_minutes &&
-          !ex.distance
+          !item.duration_minutes &&
+          !item.distance
         ) {
           return false;
         }
@@ -1103,17 +1159,25 @@ class TelegramBotService {
       });
 
       const uniqueExercisesMap = new Map<string, any>();
-      exercises.forEach((ex: any) => {
+      exercises.forEach((ex: unknown) => {
+        const item = ex as {
+          entry_date?: string;
+          exercise_name?: string;
+          name?: string;
+          duration_minutes?: number;
+          distance?: number;
+          avg_heart_rate?: number;
+        };
         let dateStr = today;
-        if (ex.entry_date) {
-          const d = new Date(ex.entry_date);
+        if (item.entry_date) {
+          const d = new Date(item.entry_date);
           if (!isNaN(d.getTime())) {
             dateStr = instantToDay(d, user.timezone || 'UTC');
           }
         }
 
-        const name = (ex.exercise_name || ex.name || 'Activity').trim();
-        const dur = Math.round(ex.duration_minutes || 0);
+        const name = (item.exercise_name || item.name || 'Activity').trim();
+        const dur = Math.round(item.duration_minutes || 0);
 
         const key = `${dateStr}|${name.toLowerCase()}|${dur}`;
         const existing = uniqueExercisesMap.get(key);
@@ -1123,14 +1187,18 @@ class TelegramBotService {
           const existingScore =
             (existing.distance ? 1 : 0) + (existing.avg_heart_rate ? 1 : 0);
           const currentScore =
-            (ex.distance ? 1 : 0) + (ex.avg_heart_rate ? 1 : 0);
+            ((item as any).distance ? 1 : 0) +
+            ((item as any).avg_heart_rate ? 1 : 0);
           if (currentScore > existingScore) {
             keepCurrent = true;
           }
         }
 
         if (keepCurrent) {
-          uniqueExercisesMap.set(key, { ...ex, entry_date_str: dateStr });
+          uniqueExercisesMap.set(key, {
+            ...(item as any),
+            entry_date_str: dateStr,
+          });
         }
       });
 
@@ -1192,17 +1260,18 @@ class TelegramBotService {
       });
 
       this.bot!.sendMessage(chatId, text.trim(), { parse_mode: 'HTML' });
-    } catch (e: any) {
-      log('error', '[TELEGRAM BOT] Error fetching exercises:', e);
-      this.bot!.sendMessage(chatId, `❌ Помилка: ${e.message}`);
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      log('error', '[TELEGRAM BOT] Error fetching exercises:', errorMessage);
+      this.bot!.sendMessage(chatId, `❌ Помилка: ${errorMessage}`);
     }
   }
 
   private async buildContentParts(
     chatId: number,
     msg: TelegramBot.Message
-  ): Promise<any[] | null> {
-    const parts: any[] = [];
+  ): Promise<Record<string, unknown>[] | null> {
+    const parts: Record<string, unknown>[] = [];
     let hasMedia = false;
 
     if (msg.text) {
@@ -1223,8 +1292,12 @@ class TelegramBotService {
             image_url: { url: `data:image/jpeg;base64,${base64Image}` },
           });
         }
-      } catch (e: any) {
-        log('error', '[TELEGRAM BOT] Photo fetch error:', e.message);
+      } catch (e: unknown) {
+        log(
+          'error',
+          '[TELEGRAM BOT] Photo fetch error:',
+          e instanceof Error ? e.message : String(e)
+        );
       }
     }
 
@@ -1255,8 +1328,12 @@ class TelegramBotService {
             image_url: { url: `data:${mimeType};base64,${base64Data}` },
           });
         }
-      } catch (e: any) {
-        log('error', '[TELEGRAM BOT] Media fetch error:', e.message);
+      } catch (e: unknown) {
+        log(
+          'error',
+          '[TELEGRAM BOT] Media fetch error:',
+          e instanceof Error ? e.message : String(e)
+        );
       }
     }
 
@@ -1276,11 +1353,12 @@ class TelegramBotService {
         responseType: 'arraybuffer',
       });
       return Buffer.from(response.data, 'binary').toString('base64');
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
       log(
         'error',
         '[TELEGRAM BOT] Error downloading file from Telegram:',
-        e.message
+        errorMessage
       );
       return null;
     }
@@ -1321,11 +1399,18 @@ class TelegramBotService {
         return 'No exercises in the last 7 days.';
 
       return exercises
-        .map((ex: any) => {
-          const date = ex.entry_date
-            ? instantToDay(ex.entry_date, tz)
+        .map((ex: unknown) => {
+          const item = ex as {
+            entry_date?: string;
+            exercise_name?: string;
+            name?: string;
+            duration_minutes: number;
+            calories_burned: number;
+          };
+          const date = item.entry_date
+            ? instantToDay(item.entry_date, tz)
             : 'Unknown';
-          return `- ${date}: ${ex.exercise_name || ex.name} (${ex.duration_minutes}m, ${ex.calories_burned}kcal)`;
+          return `- ${date}: ${item.exercise_name || item.name} (${item.duration_minutes}m, ${item.calories_burned}kcal)`;
         })
         .join('\n');
     } catch {
@@ -1401,7 +1486,7 @@ class TelegramBotService {
     const t = getTranslations(lang);
     await this.bot!.sendMessage(
       chatId,
-      'Оберіть платформу для синхронізації:',
+      'Choose a platform for synchronization:',
       {
         reply_markup: {
           inline_keyboard: [

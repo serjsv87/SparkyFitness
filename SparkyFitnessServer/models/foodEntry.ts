@@ -110,7 +110,10 @@ import { sanitizeCustomNutrients } from '../utils/foodUtils.js';
  *           description: A JSON object for storing custom nutrient data.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function createFoodEntry(entryData: any, createdByUserId: any) {
+async function createFoodEntry(
+  entryData: Record<string, any>,
+  createdByUserId: string
+) {
   log(
     'info',
     `createFoodEntry in foodEntry.js: entryData: ${JSON.stringify(entryData)}, createdByUserId: ${createdByUserId}`
@@ -271,16 +274,20 @@ async function createFoodEntry(entryData: any, createdByUserId: any) {
     );
     await client.query('COMMIT');
     return result.rows[0];
-  } catch (error) {
+  } catch (error: unknown) {
     await client.query('ROLLBACK');
-    log('error', 'Error creating food entry with snapshot:', error);
+    log(
+      'error',
+      'Error creating food entry with snapshot:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   } finally {
     client.release();
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodEntryById(entryId: any, userId: any) {
+async function getFoodEntryById(entryId: string, userId: string) {
   const client = await getClient(userId); // User-specific operation (RLS will handle access)
   try {
     const result = await client.query(
@@ -329,7 +336,7 @@ async function getFoodEntryById(entryId: any, userId: any) {
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodEntryOwnerId(entryId: any, userId: any) {
+async function getFoodEntryOwnerId(entryId: string, userId: string) {
   const client = await getClient(userId); // User-specific operation (RLS will handle access)
   try {
     const result = await client.query(
@@ -342,7 +349,7 @@ async function getFoodEntryOwnerId(entryId: any, userId: any) {
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteFoodEntry(entryId: any, userId: any) {
+async function deleteFoodEntry(entryId: string, userId: string) {
   const client = await getClient(userId); // User-specific operation (RLS will handle access)
   try {
     const result = await client.query(
@@ -355,16 +362,11 @@ async function deleteFoodEntry(entryId: any, userId: any) {
   }
 }
 async function updateFoodEntry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  snapshotData: any
+  entryId: string,
+  userId: string,
+  actingUserId: string,
+  entryData: Record<string, any>,
+  snapshotData: Record<string, any>
 ) {
   const client = await getClient(actingUserId); // User-specific operation
   let mealTypeId = entryData.meal_type_id;
@@ -452,7 +454,7 @@ async function updateFoodEntry(
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getDailyNutritionByCategory(userId: any, date: any) {
+async function getDailyNutritionByCategory(userId: string, date: string) {
   const client = await getClient(userId);
   try {
     const query = `
@@ -472,9 +474,8 @@ async function getDailyNutritionByCategory(userId: any, date: any) {
     `;
     const result = await client.query(query, [userId, date]);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const categories: any = {};
-    result.rows.forEach((row: any) => {
+    const categories: Record<string, any> = {};
+    result.rows.forEach((row: Record<string, any>) => {
       categories[row.category.toLowerCase()] = {
         calories: parseFloat(row.calories) || 0,
         protein: parseFloat(row.protein) || 0,
@@ -486,8 +487,12 @@ async function getDailyNutritionByCategory(userId: any, date: any) {
       };
     });
     return categories;
-  } catch (error: any) {
-    log('error', 'Error in getDailyNutritionByCategory:', error);
+  } catch (error: unknown) {
+    log(
+      'error',
+      'Error in getDailyNutritionByCategory:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   } finally {
     client.release();
@@ -495,7 +500,7 @@ async function getDailyNutritionByCategory(userId: any, date: any) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getFoodEntriesByDate(userId: any, selectedDate: any) {
+async function getFoodEntriesByDate(userId: string, selectedDate: string) {
   const client = await getClient(userId); // User-specific operation
   try {
     const result = await client.query(
@@ -668,17 +673,12 @@ async function getFoodEntriesByDateRange(
   }
 }
 async function getFoodEntryByDetails(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  foodId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mealType: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  variantId: any,
-  foodEntryMealId = null
+  userId: string,
+  foodId: string,
+  mealType: string,
+  entryDate: string,
+  variantId: string,
+  foodEntryMealId: string | null = null
 ) {
   const client = await getClient(userId); // User-specific operation
   try {
@@ -704,10 +704,8 @@ async function getFoodEntryByDetails(
 }
 
 async function bulkCreateFoodEntries(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entriesData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any
+  entriesData: Record<string, any>[],
+  authenticatedUserId: string
 ) {
   log(
     'info',

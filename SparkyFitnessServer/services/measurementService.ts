@@ -168,8 +168,10 @@ const DEFAULT_UNITS_BY_HEALTH_TYPE = {
  *   - ExerciseSession/Workout: timestamp or date (entry date = start day)
  *   - everything else: date / entry_date / timestamp
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function resolveHealthEntryDate(entry: any, fallbackTimezone: any) {
+function resolveHealthEntryDate(
+  entry: Record<string, any>,
+  fallbackTimezone: string
+) {
   // 1. Determine the basis instant
   let basisField;
   if (entry.type === 'SleepSession') {
@@ -268,17 +270,14 @@ const VALID_SLEEP_STAGE_TYPES = new Set([
   'in_bed',
   'unknown',
 ]);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isHealthConnectSleepSource(source: any) {
+function isHealthConnectSleepSource(source: unknown) {
   return typeof source === 'string' && HEALTH_CONNECT_SLEEP_SOURCES.has(source);
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sanitizeHealthConnectSleepStageEvents(stageEvents: any) {
+function sanitizeHealthConnectSleepStageEvents(stageEvents: any[]) {
   if (!Array.isArray(stageEvents)) {
     return [];
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return stageEvents.reduce((sanitized: any, stageEvent: any) => {
+  return stageEvents.reduce((sanitized: any[], stageEvent: any) => {
     if (!stageEvent || typeof stageEvent !== 'object') {
       return sanitized;
     }
@@ -312,33 +311,26 @@ function sanitizeHealthConnectSleepStageEvents(stageEvents: any) {
   }, []);
 }
 async function processHealthData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  healthDataArray: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any
+  healthDataArray: Record<string, any>[],
+  userId: string,
+  actingUserId: string
 ) {
   const tz = await loadUserTimezone(userId);
   const processedResults = [];
   const errors = [];
   const affectedDates = new Set();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tzMetadataByType: any = {};
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tzFallbackByType: any = {};
+  const tzMetadataByType: Record<string, number> = {};
+  const tzFallbackByType: Record<string, number> = {};
   // 0. Pre-Cleanup: Delete existing Sleep/Exercise entries for the date range to prevent duplicates
   // This implements a "delete-then-insert" strategy for idempotent sync
   const entriesToClean = healthDataArray.filter(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (d: any) =>
+    (d: Record<string, any>) =>
       d.type === 'SleepSession' ||
       d.type === 'ExerciseSession' ||
       d.type === 'Workout'
   );
   if (entriesToClean.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const datesBySource: any = {};
+    const datesBySource: Record<string, Record<string, boolean>> = {};
     for (const entry of entriesToClean) {
       const source = entry.source || 'manual';
       const resolved = resolveHealthEntryDate(entry, tz);
@@ -572,14 +564,14 @@ async function processHealthData(
               status: 'success',
               data: sleepEntryResult,
             });
-          } catch (sleepError: any) {
+          } catch (sleepError: unknown) {
             log(
               'error',
-              `Error processing sleep entry: ${sleepError.message}`,
+              `Error processing sleep entry: ${sleepError instanceof Error ? sleepError.message : String(sleepError)}`,
               dataEntry
             );
             errors.push({
-              error: `Failed to process sleep entry: ${sleepError.message}`,
+              error: `Failed to process sleep entry: ${sleepError instanceof Error ? sleepError.message : String(sleepError)}`,
               entry: dataEntry,
             });
           }
@@ -619,9 +611,9 @@ async function processHealthData(
               source
             );
             processedResults.push({ type, status: 'success', data: result });
-          } catch (stressError: any) {
+          } catch (stressError: unknown) {
             errors.push({
-              error: `Failed to process Stress entry: ${stressError.message}`,
+              error: `Failed to process Stress entry: ${stressError instanceof Error ? stressError.message : String(stressError)}`,
               entry: dataEntry,
             });
           }
@@ -694,9 +686,9 @@ async function processHealthData(
             });
             affectedDates.add(parsedDate);
             break;
-          } catch (workoutError: any) {
+          } catch (workoutError: unknown) {
             errors.push({
-              error: `Failed to process Workout entry: ${workoutError.message}`,
+              error: `Failed to process Workout entry: ${workoutError instanceof Error ? workoutError.message : String(workoutError)}`,
               entry: dataEntry,
             });
           }
@@ -715,14 +707,14 @@ async function processHealthData(
               status: 'success',
               data: sleepEntryResult,
             });
-          } catch (sleepError: any) {
+          } catch (sleepError: unknown) {
             log(
               'error',
-              `Error processing sleep entry: ${sleepError.message}`,
+              `Error processing sleep entry: ${sleepError instanceof Error ? sleepError.message : String(sleepError)}`,
               dataEntry
             );
             errors.push({
-              error: `Failed to process sleep entry: ${sleepError.message}`,
+              error: `Failed to process sleep entry: ${sleepError instanceof Error ? sleepError.message : String(sleepError)}`,
               entry: dataEntry,
             });
           }
@@ -831,12 +823,9 @@ async function processHealthData(
 }
 
 async function processMobileHealthData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mobileHealthDataArray: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any
+  mobileHealthDataArray: Record<string, any>[],
+  userId: string,
+  actingUserId: string
 ) {
   const tz = await loadUserTimezone(userId);
   const processedResults = [];
@@ -885,10 +874,10 @@ async function processMobileHealthData(
       parsedDate = instantToDay(dateObj, tz);
       entryTimestamp = dateObj.toISOString();
       entryHour = instantHourMinute(dateObj, tz).hour;
-    } catch (e: any) {
-      log('error', 'Timestamp parsing error:', e);
+    } catch (error: unknown) {
+      log('error', 'Timestamp parsing error:', error);
       errors.push({
-        error: `Invalid timestamp format for entry: ${JSON.stringify(dataEntry)}. Error: ${e.message}`,
+        error: `Invalid timestamp format for entry: ${JSON.stringify(dataEntry)}. Error: ${error instanceof Error ? error.message : String(error)}`,
         entry: dataEntry,
       });
       continue;
@@ -1078,14 +1067,14 @@ async function processMobileHealthData(
           break;
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       log(
         'error',
         `Error processing mobile health data entry ${JSON.stringify(dataEntry)}:`,
         error
       );
       errors.push({
-        error: `Failed to process entry: ${error.message}`,
+        error: `Failed to process entry: ${error instanceof Error ? error.message : String(error)}`,
         entry: dataEntry,
       });
     }
@@ -1121,12 +1110,9 @@ async function processMobileHealthData(
 
 // Helper function to get or create a custom category
 async function getOrCreateCustomCategory(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  categoryName: any,
+  userId: string,
+  actingUserId: string,
+  categoryName: string,
   dataType = 'numeric',
   measurementType = 'N/A'
 ) {
@@ -1134,8 +1120,7 @@ async function getOrCreateCustomCategory(
   const existingCategories =
     await measurementRepository.getCustomCategories(userId);
   const category = existingCategories.find(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (cat: any) => cat.name === categoryName
+    (cat: Record<string, any>) => cat.name === categoryName
   );
   if (category) {
     return category;
@@ -1156,12 +1141,9 @@ async function getOrCreateCustomCategory(
   }
 }
 async function getWaterIntake(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string
 ) {
   try {
     const waterData = await measurementRepository.getWaterIntakeByDate(
@@ -1180,16 +1162,11 @@ async function getWaterIntake(
   }
 }
 async function upsertWaterIntake(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entryDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  changeDrinks: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  containerId: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  entryDate: string,
+  changeDrinks: number,
+  containerId: number | null
 ) {
   try {
     // 1. Get current MANUAL water intake for the day to avoid mixing with syncs
@@ -1197,7 +1174,6 @@ async function upsertWaterIntake(
       await measurementRepository.getWaterIntakeByDate(
         authenticatedUserId,
         entryDate,
-        // @ts-expect-error TS(2345): Argument of type '"manual"' is not assignable to p... Remove this comment to see the full error message
         'manual'
       );
     const currentManualMl = currentManualRecord
@@ -1242,10 +1218,10 @@ async function upsertWaterIntake(
     // Trigger MFP sync in background
     mfpSyncService
       .syncDailyNutritionToMFP(authenticatedUserId, entryDate)
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         log(
           'error',
-          `Background MFP water sync failed for user ${authenticatedUserId} on ${entryDate}: ${err.message}`
+          `Background MFP water sync failed for user ${authenticatedUserId} on ${entryDate}: ${err instanceof Error ? err.message : String(err)}`
         );
       });
 
@@ -1268,25 +1244,31 @@ async function upsertWaterIntake(
       });
     */
 
-    if (!(global as any).hydrationSyncTimers)
-      (global as any).hydrationSyncTimers = {};
+    if (!(global as Record<string, any>).hydrationSyncTimers)
+      (global as Record<string, any>).hydrationSyncTimers = {};
     const timerKey = `${authenticatedUserId}-${entryDate}`;
     if ((global as any).hydrationSyncTimers[timerKey]) {
       clearTimeout((global as any).hydrationSyncTimers[timerKey]);
     }
-    (global as any).hydrationSyncTimers[timerKey] = setTimeout(async () => {
-      delete (global as any).hydrationSyncTimers[timerKey];
-      log(
-        'info',
-        `[WATER_SYNC] Running debounced sync to align totals for user ${authenticatedUserId} on ${entryDate}`
-      );
-      const garminService = await import('./garminService.js');
-      garminService.default
-        .syncGarminHydration(authenticatedUserId, entryDate, true)
-        .catch((err: any) => {
-          log('error', `[WATER_SYNC] Debounced sync failed: ${err.message}`);
-        });
-    }, 3000);
+    (global as Record<string, any>).hydrationSyncTimers[timerKey] = setTimeout(
+      async () => {
+        delete (global as Record<string, any>).hydrationSyncTimers[timerKey];
+        log(
+          'info',
+          `[WATER_SYNC] Running debounced sync to align totals for user ${authenticatedUserId} on ${entryDate}`
+        );
+        const garminService = await import('./garminService.js');
+        garminService.default
+          .syncGarminHydration(authenticatedUserId, entryDate, true)
+          .catch((err: unknown) => {
+            log(
+              'error',
+              `[WATER_SYNC] Debounced sync failed: ${err instanceof Error ? err.message : String(err)}`
+            );
+          });
+      },
+      3000
+    );
 
     return result;
   } catch (error) {
@@ -1298,8 +1280,10 @@ async function upsertWaterIntake(
     throw error;
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getWaterIntakeEntryById(authenticatedUserId: any, id: any) {
+async function getWaterIntakeEntryById(
+  authenticatedUserId: string,
+  id: string
+) {
   try {
     const entryOwnerId = await measurementRepository.getWaterIntakeEntryOwnerId(
       id,
@@ -1323,14 +1307,10 @@ async function getWaterIntakeEntryById(authenticatedUserId: any, id: any) {
   }
 }
 async function updateWaterIntake(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  id: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  id: string,
+  updateData: Record<string, any>
 ) {
   try {
     const entryOwnerId = await measurementRepository.getWaterIntakeEntryOwnerId(
@@ -1434,14 +1414,10 @@ async function deleteWaterIntake(authenticatedUserId: any, id: any) {
   }
 }
 async function getCheckInMeasurementsByDateRange(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startDate: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  endDate: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  startDate: string,
+  endDate: string
 ) {
   try {
     const measurements =
@@ -1461,12 +1437,9 @@ async function getCheckInMeasurementsByDateRange(
   }
 }
 async function getCheckInMeasurements(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string
 ) {
   try {
     const measurements =
@@ -1485,10 +1458,8 @@ async function getCheckInMeasurements(
   }
 }
 async function getCustomCategories(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any
+  authenticatedUserId: string,
+  targetUserId: string
 ) {
   try {
     return await measurementRepository.getCustomCategories(targetUserId);
@@ -1501,11 +1472,11 @@ async function getCustomCategories(
     throw error;
   }
 }
-async function getCustomCategoryById(authenticatedUserId: any, id: any) {
+async function getCustomCategoryById(authenticatedUserId: string, id: string) {
   try {
     const categories =
       await measurementRepository.getCustomCategories(authenticatedUserId);
-    const category = categories.find((c: any) => c.id === id);
+    const category = categories.find((c: Record<string, any>) => c.id === id);
     if (!category) {
       throw new Error('Custom category not found.');
     }
@@ -1520,12 +1491,9 @@ async function getCustomCategoryById(authenticatedUserId: any, id: any) {
   }
 }
 async function createCustomCategory(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  categoryData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  categoryData: Record<string, any>
 ) {
   try {
     const data = {
@@ -1533,7 +1501,7 @@ async function createCustomCategory(
       user_id: categoryData.user_id || authenticatedUserId,
       created_by_user_id: actingUserId,
     };
-    return await measurementRepository.createCustomCategory(data);
+    return await measurementRepository.createCustomCategory(data as any);
   } catch (error) {
     log(
       'error',
@@ -1544,14 +1512,10 @@ async function createCustomCategory(
   }
 }
 async function updateCustomCategory(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  categoryId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  categoryData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  categoryId: string,
+  categoryData: Record<string, any>
 ) {
   try {
     const ownerId = await measurementRepository.getCustomCategoryOwnerId(
@@ -1576,7 +1540,10 @@ async function updateCustomCategory(
     throw error;
   }
 }
-async function deleteCustomCategory(authenticatedUserId: any, categoryId: any) {
+async function deleteCustomCategory(
+  authenticatedUserId: string,
+  categoryId: string
+) {
   try {
     const ownerId = await measurementRepository.getCustomCategoryOwnerId(
       categoryId,
@@ -1603,12 +1570,9 @@ async function deleteCustomCategory(authenticatedUserId: any, categoryId: any) {
   }
 }
 async function getCustomMeasurementsByDate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string
 ) {
   try {
     return await measurementRepository.getCustomMeasurementEntriesByDate(
@@ -1664,14 +1628,10 @@ async function createCustomMeasurement(
   }
 }
 async function updateCustomMeasurement(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  measurementId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  measurementData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  measurementId: string,
+  measurementData: Record<string, any>
 ) {
   try {
     // RLS in measurementRepository will handle checking if the measurement belongs to the user
@@ -1698,8 +1658,8 @@ async function updateCustomMeasurement(
   }
 }
 async function deleteCustomMeasurement(
-  authenticatedUserId: any,
-  measurementId: any
+  authenticatedUserId: string,
+  measurementId: string
 ) {
   try {
     // RLS in measurementRepository will handle checking if the measurement belongs to the user
@@ -1723,12 +1683,9 @@ async function deleteCustomMeasurement(
   }
 }
 async function processSleepEntry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  userId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sleepData: any
+  userId: string,
+  actingUserId: string,
+  sleepData: Record<string, any>
 ) {
   try {
     const bedtime = new Date(sleepData.bedtime);
@@ -1775,12 +1732,9 @@ async function processSleepEntry(
   }
 }
 async function getSleepEntryByDate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string
 ) {
   try {
     const sleepEntries =
@@ -1802,7 +1756,7 @@ async function getSleepEntryByDate(
     throw error;
   }
 }
-async function deleteSleepEntry(authenticatedUserId: any, id: any) {
+async function deleteSleepEntry(authenticatedUserId: string, id: string) {
   try {
     const success = await sleepRepository.deleteSleepEntry(
       id,
@@ -1822,14 +1776,10 @@ async function deleteSleepEntry(authenticatedUserId: any, id: any) {
   }
 }
 async function getMeasurementHistory(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  type: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  days: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  type: string,
+  days: number
 ) {
   try {
     const latest = await measurementRepository.getMostRecentMeasurement(
@@ -1846,7 +1796,10 @@ async function getMeasurementHistory(
     throw error;
   }
 }
-async function getLatestWeight(authenticatedUserId: any, targetUserId: any) {
+async function getLatestWeight(
+  authenticatedUserId: string,
+  targetUserId: string
+) {
   try {
     const latestWeight =
       await measurementRepository.getLatestMeasurement(targetUserId);
@@ -1860,7 +1813,7 @@ async function getLatestWeight(authenticatedUserId: any, targetUserId: any) {
     throw error;
   }
 }
-async function getCheckInEntryById(authenticatedUserId: any, id: any) {
+async function getCheckInEntryById(authenticatedUserId: string, id: string) {
   try {
     return await measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate(
       authenticatedUserId,
@@ -1876,14 +1829,10 @@ async function getCheckInEntryById(authenticatedUserId: any, id: any) {
   }
 }
 async function updateCheckIn(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  actingUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  id: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateData: any
+  authenticatedUserId: string,
+  actingUserId: string,
+  id: string,
+  updateData: Record<string, any>
 ) {
   try {
     return await measurementRepository.updateCheckInMeasurements(
@@ -1901,7 +1850,7 @@ async function updateCheckIn(
     throw error;
   }
 }
-async function deleteCheckIn(authenticatedUserId: any, id: any) {
+async function deleteCheckIn(authenticatedUserId: string, id: string) {
   try {
     const success = await measurementRepository.deleteCheckInMeasurements(
       id,
@@ -1920,7 +1869,10 @@ async function deleteCheckIn(authenticatedUserId: any, id: any) {
     throw error;
   }
 }
-async function getTdeeInputs(authenticatedUserId: any, targetUserId: any) {
+async function getTdeeInputs(
+  authenticatedUserId: string,
+  targetUserId: string
+) {
   try {
     // 1. Fetch user data for age, gender, height
     const user = await userRepository.findUserById(targetUserId);
@@ -1949,14 +1901,10 @@ async function getTdeeInputs(authenticatedUserId: any, targetUserId: any) {
   }
 }
 async function getBulkMeasurementHistory(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  authenticatedUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targetUserId: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  metricTypes: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  days: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  metricTypes: string[],
+  days: number
 ) {
   try {
     // We expect metricTypes to be an array like ['step', 'weight', 'body_fat_percentage']
@@ -2017,12 +1965,11 @@ async function upsertCustomMeasurementEntry(
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function calculateSleepScore(
-  sleepEntryData: any,
-  stageEvents: any,
-  age: any = null,
-  gender: any = null
+  sleepEntryData: Record<string, any>,
+  stageEvents: any[],
+  age: number | null = null,
+  gender: string | null = null
 ) {
   const { duration_in_seconds, time_asleep_in_seconds } = sleepEntryData;
 
@@ -2180,17 +2127,17 @@ async function calculateSleepScore(
 }
 
 async function upsertCheckInMeasurements(
-  authenticatedUserId: any,
-  targetUserId: any,
-  date: any,
-  data: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string,
+  data: Record<string, any>
 ) {
   try {
     return await measurementRepository.upsertCheckInMeasurements(
       targetUserId,
+      authenticatedUserId,
       date,
-      data,
-      authenticatedUserId
+      data
     );
   } catch (error) {
     log(
@@ -2203,9 +2150,9 @@ async function upsertCheckInMeasurements(
 }
 
 async function getLatestCheckInMeasurementsOnOrBeforeDate(
-  authenticatedUserId: any,
-  targetUserId: any,
-  date: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string
 ) {
   try {
     return await measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate(
@@ -2223,10 +2170,10 @@ async function getLatestCheckInMeasurementsOnOrBeforeDate(
 }
 
 async function updateCheckInMeasurements(
-  authenticatedUserId: any,
-  targetUserId: any,
-  date: any,
-  data: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string,
+  data: Record<string, any>
 ) {
   try {
     return await measurementRepository.updateCheckInMeasurements(
@@ -2245,7 +2192,10 @@ async function updateCheckInMeasurements(
   }
 }
 
-async function deleteCheckInMeasurements(authenticatedUserId: any, id: any) {
+async function deleteCheckInMeasurements(
+  authenticatedUserId: string,
+  id: string
+) {
   try {
     return await measurementRepository.deleteCheckInMeasurements(
       id,
@@ -2258,17 +2208,17 @@ async function deleteCheckInMeasurements(authenticatedUserId: any, id: any) {
 }
 
 async function deleteCustomMeasurementEntry(
-  authenticatedUserId: any,
-  entryId: any
+  authenticatedUserId: string,
+  entryId: string
 ) {
   // Alias for deleteCustomMeasurement
   return deleteCustomMeasurement(authenticatedUserId, entryId);
 }
 
 async function getCustomMeasurementEntriesByDate(
-  authenticatedUserId: any,
-  targetUserId: any,
-  date: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  date: string
 ) {
   try {
     return await measurementRepository.getCustomMeasurementEntriesByDate(
@@ -2286,23 +2236,22 @@ async function getCustomMeasurementEntriesByDate(
 }
 
 async function getCustomMeasurementEntries(
-  authenticatedUserId: any,
-  targetUserId: any,
-  categoryId: any,
-  limit?: any,
-  offset?: any
+  userId: string,
+  limit: string | undefined,
+  orderBy: string | undefined,
+  filterObj: Record<string, any>
 ) {
   try {
     return await measurementRepository.getCustomMeasurementEntries(
-      targetUserId,
-      categoryId,
+      userId,
       limit,
-      offset
+      orderBy,
+      filterObj
     );
-  } catch (error) {
+  } catch (error: unknown) {
     log(
       'error',
-      `Error fetching custom measurement entries for user ${targetUserId}:`,
+      `Error fetching custom measurement entries for user ${userId}:`,
       error
     );
     throw error;
@@ -2310,11 +2259,11 @@ async function getCustomMeasurementEntries(
 }
 
 async function getCustomMeasurementsByDateRange(
-  authenticatedUserId: any,
-  targetUserId: any,
-  categoryId: any,
-  startDate: any,
-  endDate: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  categoryId: string,
+  startDate: string,
+  endDate: string
 ) {
   try {
     return await measurementRepository.getCustomMeasurementsByDateRange(
@@ -2334,9 +2283,9 @@ async function getCustomMeasurementsByDateRange(
 }
 
 async function getMostRecentMeasurement(
-  authenticatedUserId: any,
-  targetUserId: any,
-  measurementType: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  measurementType: string
 ) {
   try {
     return await measurementRepository.getMostRecentMeasurement(
@@ -2354,10 +2303,10 @@ async function getMostRecentMeasurement(
 }
 
 async function getSleepEntriesByUserIdAndDateRange(
-  authenticatedUserId: any,
-  targetUserId: any,
-  startDate: any,
-  endDate: any
+  authenticatedUserId: string,
+  targetUserId: string,
+  startDate: string,
+  endDate: string
 ) {
   try {
     return await sleepRepository.getSleepEntriesByUserIdAndDateRange(
@@ -2376,10 +2325,10 @@ async function getSleepEntriesByUserIdAndDateRange(
 }
 
 async function updateSleepEntry(
-  authenticatedUserId: any,
-  id: any,
-  actingUserId: any,
-  data: any
+  authenticatedUserId: string,
+  id: string,
+  actingUserId: string,
+  data: Record<string, any>
 ) {
   try {
     return await sleepRepository.updateSleepEntry(

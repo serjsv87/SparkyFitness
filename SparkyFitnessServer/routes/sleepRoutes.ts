@@ -59,11 +59,11 @@ router.get(
         });
       }
 
-      const targetUserId = userId || req.userId;
+      const targetUserId = (userId as string) || req.userId;
       const analyticsData = await sleepAnalyticsService.getSleepAnalytics(
         targetUserId,
-        startDate,
-        endDate
+        startDate as string,
+        endDate as string
       );
       res.status(200).json(analyticsData);
     } catch (error) {
@@ -196,11 +196,11 @@ router.get(
         });
       }
 
-      const targetUserId = userId || req.userId;
+      const targetUserId = (userId as string) || req.userId;
 
-      if (userId && userId !== req.userId) {
+      if (userId && (userId as string) !== req.userId) {
         const hasPermission = await permissionUtils.canAccessUserData(
-          userId,
+          userId as string,
           'reports',
 
           req.userId
@@ -215,9 +215,9 @@ router.get(
       const sleepEntries =
         await measurementService.getSleepEntriesByUserIdAndDateRange(
           req.userId,
-          targetUserId,
-          startDate,
-          endDate
+          targetUserId as string,
+          startDate as string,
+          endDate as string
         );
       res.status(200).json(sleepEntries);
     } catch (error) {
@@ -265,11 +265,11 @@ router.get(
         });
       }
 
-      const targetUserId = userId || req.userId;
+      const targetUserId = (userId as string) || req.userId;
 
-      if (userId && userId !== req.userId) {
+      if (userId && (userId as string) !== req.userId) {
         const hasPermission = await permissionUtils.canAccessUserData(
-          userId,
+          userId as string,
           'reports',
 
           req.userId
@@ -284,9 +284,9 @@ router.get(
       const sleepEntries =
         await measurementService.getSleepEntriesByUserIdAndDateRange(
           req.userId,
-          targetUserId,
-          startDate,
-          endDate
+          targetUserId as string,
+          startDate as string,
+          endDate as string
         );
       res.status(200).json(sleepEntries);
     } catch (error) {

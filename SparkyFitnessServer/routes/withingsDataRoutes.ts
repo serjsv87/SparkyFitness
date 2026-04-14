@@ -29,9 +29,13 @@ const router = express.Router();
  *         description: Aggregated Withings data.
  */
 router.get('/withings/data', authenticate, async (req, res) => {
+  let userId: string | null = null;
   try {
-    const userId = req.user.id;
-    const { startDate, endDate } = req.query; // Expecting YYYY-MM-DD format
+    userId = (req as any).user?.id as string;
+    const { startDate, endDate } = req.query as {
+      startDate: string;
+      endDate: string;
+    };
     if (!startDate || !endDate) {
       return res.status(400).json({
         message: 'startDate and endDate are required query parameters.',
@@ -48,7 +52,12 @@ router.get('/withings/data', authenticate, async (req, res) => {
     // Fetch custom measurements related to Withings (blood pressure, heart rate, sleep)
     const customCategories =
       await measurementRepository.getCustomCategories(userId);
-    const withingsData = {
+    const withingsData: {
+      weight: any;
+      bloodPressure: any[];
+      heartRate: any[];
+      sleep: any[];
+    } = {
       weight: latestWeight,
       bloodPressure: [],
       heartRate: [],
@@ -69,18 +78,14 @@ router.get('/withings/data', authenticate, async (req, res) => {
             category.id,
             startDate,
             endDate,
-            // @ts-expect-error TS(2345): Argument of type '"withings"' is not assignable to... Remove this comment to see the full error message
             'withings'
           );
         if (category.name.includes('Blood Pressure')) {
-          // @ts-expect-error TS(2345): Argument of type 'any' is not assignable to parame... Remove this comment to see the full error message
-          withingsData.bloodPressure.push(...entries);
+          withingsData.bloodPressure.push(...(entries as any));
         } else if (category.name.includes('Heart Rate')) {
-          // @ts-expect-error TS(2345): Argument of type 'any' is not assignable to parame... Remove this comment to see the full error message
-          withingsData.heartRate.push(...entries);
+          withingsData.heartRate.push(...(entries as any));
         } else if (category.name.includes('Sleep')) {
-          // @ts-expect-error TS(2345): Argument of type 'any' is not assignable to parame... Remove this comment to see the full error message
-          withingsData.sleep.push(...entries);
+          withingsData.sleep.push(...(entries as any));
         }
       }
     }
@@ -91,8 +96,7 @@ router.get('/withings/data', authenticate, async (req, res) => {
   } catch (error) {
     log(
       'error',
-      // @ts-expect-error TS(2339): Property 'user' does not exist on type 'Request<{}... Remove this comment to see the full error message
-      `Error retrieving Withings data for user ${req.user.id}: ${error.message}`
+      `Error retrieving Withings data for user ${userId}: ${error instanceof Error ? error.message : String(error)}`
     );
     res.status(500).json({
       message: 'Error retrieving Withings data',

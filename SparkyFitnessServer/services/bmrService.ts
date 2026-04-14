@@ -25,18 +25,12 @@ const ActivityMultiplier = {
  * @returns {number} - Calculated BMR
  */
 function calculateBmr(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  algorithm: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  weight: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  height: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  age: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  gender: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  bodyFatPercentage: any
+  algorithm: string,
+  weight: number,
+  height: number,
+  age: number,
+  gender: string,
+  bodyFatPercentage: number | null
 ) {
   log('info', `Calculating BMR with ${algorithm} algorithm.`);
   switch (algorithm) {

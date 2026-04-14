@@ -25,7 +25,7 @@ export interface ChatHistoryEntry {
   user_id: string;
   content: string;
   message_type: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
   session_id?: string;
   message?: string;
   response?: string;
@@ -147,7 +147,7 @@ export async function getAiServiceSettingForBackend(
 export async function getAiServiceSettingById(
   id: string,
   userId: string
-): Promise<any> {
+): Promise<AiServiceSetting | null> {
   const client = await getClient(userId);
   try {
     const result = await client.query(
@@ -191,13 +191,13 @@ export async function getAiServiceSettingsByUserId(
       []
     );
 
-    const userSettings = userResult.rows.map((row: any) => ({
-      ...row,
+    const userSettings = userResult.rows.map((row: unknown) => ({
+      ...(row as AiServiceSetting),
       is_public: false,
     }));
 
-    const publicSettings = globalResult.rows.map((row: any) => ({
-      ...row,
+    const publicSettings = globalResult.rows.map((row: unknown) => ({
+      ...(row as AiServiceSetting),
       is_public: true,
     }));
 
@@ -263,7 +263,9 @@ export async function clearOldChatHistory(userId: string): Promise<boolean> {
   }
 }
 
-export async function getChatHistoryByUserId(userId: string): Promise<any[]> {
+export async function getChatHistoryByUserId(
+  userId: string
+): Promise<ChatHistoryEntry[]> {
   const client = await getClient(userId);
   try {
     const result = await client.query(
@@ -279,7 +281,7 @@ export async function getChatHistoryByUserId(userId: string): Promise<any[]> {
 export async function getChatHistoryEntryById(
   id: string,
   userId: string
-): Promise<any> {
+): Promise<ChatHistoryEntry | null> {
   const client = await getClient(userId);
   try {
     const result = await client.query(
@@ -311,8 +313,8 @@ export async function getChatHistoryEntryOwnerId(
 export async function updateChatHistoryEntry(
   id: string,
   userId: string,
-  updateData: any
-): Promise<any> {
+  updateData: Partial<ChatHistoryEntry>
+): Promise<ChatHistoryEntry | null> {
   const client = await getClient(userId);
   try {
     const result = await client.query(
@@ -372,7 +374,7 @@ export async function saveChatMessage(
   userId: string,
   content: string,
   messageType: string,
-  metadata: any = null
+  metadata: Record<string, unknown> | null = null
 ): Promise<boolean> {
   const client = await getClient(userId);
   try {
@@ -388,8 +390,8 @@ export async function saveChatMessage(
 }
 
 export async function upsertGlobalAiServiceSetting(
-  settingData: any
-): Promise<any> {
+  settingData: Partial<AiServiceSetting>
+): Promise<AiServiceSetting | null> {
   const client = await getSystemClient();
   try {
     let encryptedApiKey = settingData.encrypted_api_key || null;
@@ -455,7 +457,9 @@ export async function upsertGlobalAiServiceSetting(
   }
 }
 
-export async function getGlobalAiServiceSettings(): Promise<any[]> {
+export async function getGlobalAiServiceSettings(): Promise<
+  AiServiceSetting[]
+> {
   const client = await getSystemClient();
   try {
     const result = await client.query(
@@ -468,7 +472,9 @@ export async function getGlobalAiServiceSettings(): Promise<any[]> {
   }
 }
 
-export async function getGlobalAiServiceSettingById(id: string): Promise<any> {
+export async function getGlobalAiServiceSettingById(
+  id: string
+): Promise<AiServiceSetting | null> {
   const client = await getSystemClient();
   try {
     const result = await client.query(
