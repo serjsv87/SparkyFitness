@@ -963,11 +963,11 @@ async function syncGarminHydration(
         clientCleanup.release();
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     log(
       'error',
       `[WATER_SYNC] Error in syncGarminHydration for user ${userId}:`,
-      err.message
+      (err as Error).message
     );
   }
 }

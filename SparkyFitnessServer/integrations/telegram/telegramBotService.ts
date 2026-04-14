@@ -467,8 +467,11 @@ class TelegramBotService {
             chatId,
             query.message!.message_id
           ).catch(() => false);
-        } catch (e: any) {
-          log('error', `[TELEGRAM BOT] Delete measurement error: ${e.message}`);
+        } catch (e: unknown) {
+          log(
+            'error',
+            `[TELEGRAM BOT] Delete measurement error: ${(e as Error).message}`
+          );
           await this.bot!.answerCallbackQuery(query.id, {
             text: t.deleteError,
             show_alert: true,
@@ -516,9 +519,12 @@ class TelegramBotService {
         `✅ Success! Your account is now linked, ${user.name}. ${t.helpPrompt}`,
         this.getMainMenuKeyboard(t)
       );
-    } catch (e: any) {
+    } catch (e: unknown) {
       log('error', '[TELEGRAM BOT] Linking error:', e);
-      await this.bot!.sendMessage(chatId, `❌ Link error: ${e.message}`);
+      await this.bot!.sendMessage(
+        chatId,
+        `❌ Link error: ${(e as Error).message}`
+      );
     } finally {
       client.release();
     }

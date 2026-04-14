@@ -109,8 +109,8 @@ import { sanitizeCustomNutrients } from '../utils/foodUtils.js';
  *           type: object
  *           description: A JSON object for storing custom nutrient data.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createFoodEntry(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   entryData: Record<string, any>,
   createdByUserId: string
 ) {
@@ -667,6 +667,7 @@ async function getFoodEntryByDetails(
 }
 
 async function bulkCreateFoodEntries(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   entriesData: Record<string, any>[],
   authenticatedUserId: string
 ) {

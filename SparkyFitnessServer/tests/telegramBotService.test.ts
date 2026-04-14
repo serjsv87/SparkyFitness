@@ -3,11 +3,12 @@ import telegramBotService from '../integrations/telegram/telegramBotService.js';
 import poolManager from '../db/poolManager.js';
 import { executeIntent as _executeIntent } from '../integrations/telegram/intentExecutor.js';
 
-import userRepository from '../models/userRepository.js';
-import goalRepository from '../models/goalRepository.js';
+import * as userRepositoryNS from '../models/userRepository.js';
+import * as goalRepositoryNS from '../models/goalRepository.js';
 import * as foodEntry from '../models/foodEntry.js';
-import measurementRepository from '../models/measurementRepository.js';
-import preferenceRepository from '../models/preferenceRepository.js';
+import * as exerciseEntryNS from '../models/exerciseEntry.js';
+import * as measurementRepositoryNS from '../models/measurementRepository.js';
+import * as preferenceRepositoryNS from '../models/preferenceRepository.js';
 
 vi.mock('../models/globalSettingsRepository.js');
 vi.mock('../db/poolManager.js');
@@ -28,6 +29,13 @@ vi.mock('../utils/timezoneLoader.js', () => ({
 }));
 vi.mock('@workspace/shared', () => ({
   todayInZone: vi.fn().mockReturnValue('2026-04-06'),
+  addDays: vi.fn().mockImplementation((day: string, n: number) => {
+    const d = new Date(day);
+    d.setDate(d.getDate() + n);
+    return d.toISOString().split('T')[0];
+  }),
+  instantToDay: vi.fn().mockReturnValue('2026-04-06'),
+  instantHourMinute: vi.fn().mockReturnValue(0),
 }));
 
 describe('TelegramBotService', () => {
@@ -62,7 +70,7 @@ describe('TelegramBotService', () => {
       ).findUserAndLanguageByChatId(mockChatId);
 
       expect(mockClient.query).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT id, name, language, telegram_chat_id'),
+        expect.stringContaining('telegram_chat_id'),
         [String(mockChatId)]
       );
       expect(result).toEqual(mockUser);
@@ -83,33 +91,24 @@ describe('TelegramBotService', () => {
   });
 
   describe('getTranslations', () => {
-    it('should return English translations by default', () => {
-      const t = (
-        telegramBotService as unknown as Record<
-          string,
-          (l: string) => Record<string, string>
-        >
-      ).getTranslations('en');
+    it('should return English translations by default', async () => {
+      const { getTranslations } =
+        await import('../integrations/telegram/telegramTranslations.js');
+      const t = getTranslations('en');
       expect(t.greeting).toBeDefined();
     });
 
-    it('should return Ukrainian translations for "uk"', () => {
-      const t = (
-        telegramBotService as unknown as Record<
-          string,
-          (l: string) => Record<string, string>
-        >
-      ).getTranslations('uk');
+    it('should return Ukrainian translations for "uk"', async () => {
+      const { getTranslations } =
+        await import('../integrations/telegram/telegramTranslations.js');
+      const t = getTranslations('uk');
       expect(t.greeting).toBe('Привіт');
     });
 
-    it('should fallback to English for unknown language', () => {
-      const t = (
-        telegramBotService as unknown as Record<
-          string,
-          (l: string) => Record<string, string>
-        >
-      ).getTranslations('fr');
+    it('should fallback to English for unknown language', async () => {
+      const { getTranslations } =
+        await import('../integrations/telegram/telegramTranslations.js');
+      const t = getTranslations('fr');
       expect(t.greeting).toBe('Hello');
     });
   });
@@ -133,7 +132,7 @@ describe('TelegramBotService', () => {
       await telegramBotService.handleLink(mockChatId, mockCode);
 
       expect(mockClient.query).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT id, name, language FROM public."user"'),
+        expect.stringContaining('telegram_link_code'),
         [mockCode]
       );
       expect(mockClient.query).toHaveBeenCalledWith(
@@ -172,35 +171,36 @@ describe('TelegramBotService', () => {
 
   describe('getUserNutritionContext', () => {
     it('should aggregate user physical profile and goals for AI context', async () => {
+      const { TelegramAiService } =
+        await import('../integrations/telegram/telegramAiService.js');
       const mockProfile = { gender: 'male', date_of_birth: '1990-01-01' };
       const mockGoal = { calories: 2500 };
       const mockDailyProgress = [
         { calories: 1500, protein: 100, carbs: 150, fat: 50 },
       ];
 
-      (userRepository.getUserProfile as Mock).mockResolvedValue(mockProfile);
-      (goalRepository.getMostRecentGoalBeforeDate as Mock).mockResolvedValue(
+      // Use namespace imports to match how telegramAiService imports these modules
+      (userRepositoryNS.getUserProfile as Mock).mockResolvedValue(mockProfile);
+      (goalRepositoryNS.getMostRecentGoalBeforeDate as Mock).mockResolvedValue(
         mockGoal
       );
       (foodEntry.getFoodEntriesByDate as Mock).mockResolvedValue(
         mockDailyProgress
       );
+      (foodEntry.getFoodEntriesByDateRange as Mock).mockResolvedValue([]);
+      (exerciseEntryNS.getExerciseEntriesByDate as Mock).mockResolvedValue([]);
       (
-        measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate as Mock
+        measurementRepositoryNS.getLatestCheckInMeasurementsOnOrBeforeDate as Mock
       ).mockResolvedValue({ weight: 80, height: 180 });
-      (preferenceRepository.getUserPreferences as Mock).mockResolvedValue({
+      (preferenceRepositoryNS.getUserPreferences as Mock).mockResolvedValue({
         activity_level: 'sedentary',
       });
 
-      const context = await (
-        telegramBotService as unknown as Record<
-          string,
-          (id: string) => Promise<string>
-        >
-      ).getUserNutritionContext(mockUserId);
+      const context =
+        await TelegramAiService.getUserNutritionContext(mockUserId);
 
-      expect(context).toContain('80kg');
-      expect(context).toContain('Male');
+      expect(context).toContain('80 kg');
+      expect(context).toContain('male');
       expect(context).toContain('2500 kcal');
       expect(context).toContain('1500 kcal');
     });

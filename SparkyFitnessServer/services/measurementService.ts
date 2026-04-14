@@ -171,6 +171,7 @@ const DEFAULT_UNITS_BY_HEALTH_TYPE = {
  *   - everything else: date / entry_date / timestamp
  */
 function resolveHealthEntryDate(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   entry: Record<string, any>,
   fallbackTimezone: string
 ) {
@@ -249,7 +250,7 @@ function resolveHealthEntryDate(
   }
   // Fallback to account timezone — log for observability (Phase 4 tracking)
   log(
-    'debug',
+    'DEBUG',
     `[resolveHealthEntryDate] No per-record timezone metadata for type=${entry.type}, falling back to account timezone (${fallbackTimezone})`
   );
   return {
@@ -275,10 +276,12 @@ const VALID_SLEEP_STAGE_TYPES = new Set([
 function isHealthConnectSleepSource(source: unknown) {
   return typeof source === 'string' && HEALTH_CONNECT_SLEEP_SOURCES.has(source);
 }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function sanitizeHealthConnectSleepStageEvents(stageEvents: any[]) {
   if (!Array.isArray(stageEvents)) {
     return [];
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return stageEvents.reduce((sanitized: any[], stageEvent: any) => {
     if (!stageEvent || typeof stageEvent !== 'object') {
       return sanitized;
@@ -313,6 +316,7 @@ function sanitizeHealthConnectSleepStageEvents(stageEvents: any[]) {
   }, []);
 }
 async function processHealthData(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   healthDataArray: Record<string, any>[],
   userId: string,
   actingUserId: string
@@ -326,6 +330,7 @@ async function processHealthData(
   // 0. Pre-Cleanup: Delete existing Sleep/Exercise entries for the date range to prevent duplicates
   // This implements a "delete-then-insert" strategy for idempotent sync
   const entriesToClean = healthDataArray.filter(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (d: Record<string, any>) =>
       d.type === 'SleepSession' ||
       d.type === 'ExerciseSession' ||
@@ -531,6 +536,28 @@ async function processHealthData(
             const stageEvents = isHealthConnectSleepSource(source)
               ? sanitizeHealthConnectSleepStageEvents(dataEntry.stage_events)
               : dataEntry.stage_events || [];
+            // For Health Connect, recalculate time_asleep from sanitized stage events
+            // (excluding awake stages) to correct inaccurate values from the device
+            const timeAsleepFromStages =
+              isHealthConnectSleepSource(source) && stageEvents.length > 0
+                ? stageEvents
+                    .filter(
+                      (e: {
+                        stage_type: string;
+                        duration_in_seconds: number;
+                      }) => e.stage_type !== 'awake'
+                    )
+                    .reduce(
+                      (
+                        sum: number,
+                        e: {
+                          stage_type: string;
+                          duration_in_seconds: number;
+                        }
+                      ) => sum + e.duration_in_seconds,
+                      0
+                    )
+                : null;
             // Map the dataEntry fields to what processSleepEntry expects
             const sleepEntryData = {
               entry_date: parsedDate,
@@ -547,7 +574,8 @@ async function processHealthData(
                   : new Date(timestamp),
               duration_in_seconds: Number(dataEntry.duration_in_seconds) || 0,
               time_asleep_in_seconds:
-                Number(dataEntry.time_asleep_in_seconds) || 0,
+                timeAsleepFromStages ??
+                (Number(dataEntry.time_asleep_in_seconds) || 0),
               sleep_score: Number(dataEntry.sleep_score) || 0,
               source: source,
               stage_events: stageEvents,
@@ -783,27 +811,45 @@ async function processHealthData(
           break;
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       log(
         'error',
         `Error processing health data entry ${JSON.stringify(dataEntry)}:`,
         error
       );
       errors.push({
-        error: `Failed to process entry: ${error.message}`,
+        error: `Failed to process entry: ${(error as Error).message}`,
         entry: dataEntry,
       });
     }
+  }
+
+  // Log timezone resolution summary for observability
+  if (Object.keys(tzFallbackByType).length > 0) {
+    log(
+      'INFO',
+      `Timezone fallback by type: ${Object.entries(tzFallbackByType)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(', ')}`
+    );
+  }
+  if (Object.keys(tzMetadataByType).length > 0) {
+    log(
+      'DEBUG',
+      `Timezone metadata by type: ${Object.entries(tzMetadataByType)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(', ')}`
+    );
   }
 
   // Finally, trigger MFP sync for all affected dates
   for (const date of affectedDates) {
     mfpSyncService
       .syncDailyNutritionToMFP(userId, date as string)
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         log(
           'error',
-          `Background MFP sync failed for user ${userId} on ${date}: ${err.message}`
+          `Background MFP sync failed for user ${userId} on ${date}: ${(err as Error).message}`
         );
       });
   }
@@ -825,6 +871,7 @@ async function processHealthData(
 }
 
 async function processMobileHealthData(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mobileHealthDataArray: Record<string, any>[],
   userId: string,
   actingUserId: string
@@ -1086,10 +1133,10 @@ async function processMobileHealthData(
   for (const date of affectedDates) {
     mfpSyncService
       .syncDailyNutritionToMFP(userId, date as string)
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         log(
           'error',
-          `Background MFP sync failed for user ${userId} on ${date}: ${err.message}`
+          `Background MFP sync failed for user ${userId} on ${date}: ${(err as Error).message}`
         );
       });
   }
@@ -1122,6 +1169,7 @@ async function getOrCreateCustomCategory(
   const existingCategories =
     await measurementRepository.getCustomCategories(userId);
   const category = existingCategories.find(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (cat: Record<string, any>) => cat.name === categoryName
   );
   if (category) {
@@ -1367,14 +1415,14 @@ async function updateWaterIntake(
 }
 async function deleteWaterIntake(authenticatedUserId: string, id: string) {
   try {
-    const entry = await measurementRepository.getWaterIntakeEntryById(
+    const ownerId = await measurementRepository.getWaterIntakeEntryOwnerId(
       id,
       authenticatedUserId
     );
-    if (!entry) {
+    if (!ownerId) {
       throw new Error('Water intake entry not found.');
     }
-    if (entry.user_id !== authenticatedUserId) {
+    if (ownerId !== authenticatedUserId) {
       throw new Error(
         'Forbidden: You do not have permission to delete this water intake entry.'
       );
@@ -1388,24 +1436,7 @@ async function deleteWaterIntake(authenticatedUserId: string, id: string) {
         'Water intake entry not found or not authorized to delete.'
       );
     }
-
-    // Trigger MFP sync in background
-    if (entry.entry_date) {
-      const entryDate =
-        typeof entry.entry_date === 'string'
-          ? entry.entry_date
-          : entry.entry_date.toISOString().split('T')[0];
-      mfpSyncService
-        .syncDailyNutritionToMFP(authenticatedUserId, entryDate)
-        .catch((err: unknown) => {
-          log(
-            'error',
-            `Background MFP water sync failed for user ${authenticatedUserId} on ${entryDate}: ${err instanceof Error ? err.message : String(err)}`
-          );
-        });
-    }
-
-    return true;
+    return { message: 'Water intake entry deleted successfully.' };
   } catch (error: unknown) {
     log(
       'error',
@@ -1727,6 +1758,19 @@ async function processSleepEntry(
         source,
       }
     );
+    // Persist individual stage events if provided
+    const stageEvents = sleepData.stage_events as
+      | Record<string, unknown>[]
+      | undefined;
+    if (result?.id && Array.isArray(stageEvents) && stageEvents.length > 0) {
+      for (const stageEvent of stageEvents) {
+        await sleepRepository.upsertSleepStageEvent(
+          userId,
+          result.id,
+          stageEvent
+        );
+      }
+    }
     return result;
   } catch (error: unknown) {
     log(
@@ -1975,7 +2019,7 @@ async function calculateSleepScore(
   sleepEntryData: Record<string, unknown>,
   stageEvents: Record<string, unknown>[],
   age: number | null = null,
-  gender: string | null = null
+  _gender: string | null = null
 ) {
   const { duration_in_seconds, time_asleep_in_seconds } = sleepEntryData;
 
@@ -1989,8 +2033,8 @@ async function calculateSleepScore(
   let optimalMaxDuration = 9 * 3600; // Default 9 hours
   let optimalDeepMin = 15; // Default 15%
   let optimalDeepMax = 25; // Default 25%
-  let optimalRemMin = 20; // Default 20%
-  let optimalRemMax = 25; // Default 25%
+  const optimalRemMin = 20; // Default 20%
+  const optimalRemMax = 25; // Default 25%
 
   // Adjust optimal sleep duration based on age
   if (age !== null) {
@@ -2247,6 +2291,7 @@ async function getCustomMeasurementEntries(
   userId: string,
   limit: string | undefined,
   orderBy: string | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   filterObj: Record<string, any>
 ) {
   try {
@@ -2336,6 +2381,7 @@ async function updateSleepEntry(
   authenticatedUserId: string,
   id: string,
   actingUserId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: Record<string, any>
 ) {
   try {

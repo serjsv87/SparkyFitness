@@ -42,8 +42,11 @@ router.get(
       telegramStatusResponseSchema.parse(response);
 
       res.json(response);
-    } catch (error: any) {
-      log('error', `Error checking Telegram status: ${error.message}`);
+    } catch (error: unknown) {
+      log(
+        'error',
+        `Error checking Telegram status: ${(error as Error).message}`
+      );
       res.status(500).json({ message: 'Error checking Telegram status' });
     } finally {
       client.release();
@@ -72,8 +75,11 @@ router.post(
       telegramLinkCodeResponseSchema.parse(response);
 
       res.json(response);
-    } catch (error: any) {
-      log('error', `Error generating Telegram link code: ${error.message}`);
+    } catch (error: unknown) {
+      log(
+        'error',
+        `Error generating Telegram link code: ${(error as Error).message}`
+      );
       res.status(500).json({ message: 'Error generating link code' });
     } finally {
       client.release();
@@ -96,8 +102,8 @@ router.post(
         [userId]
       );
       res.json({ message: 'Telegram account unlinked successfully' });
-    } catch (error: any) {
-      log('error', `Error unlinking Telegram: ${error.message}`);
+    } catch (error: unknown) {
+      log('error', `Error unlinking Telegram: ${(error as Error).message}`);
       res.status(500).json({ message: 'Error unlinking Telegram' });
     } finally {
       client.release();
@@ -121,10 +127,14 @@ router.post('/webhook', (req: Request, res: Response) => {
 
   try {
     const validatedData = TelegramWebhookSchema.parse(req.body);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     telegramBotService.handleUpdate(validatedData as any);
     res.sendStatus(200);
-  } catch (error: any) {
-    log('error', `Telegram webhook validation failed: ${error.message}`);
+  } catch (error: unknown) {
+    log(
+      'error',
+      `Telegram webhook validation failed: ${(error as Error).message}`
+    );
     // Return 200 to prevent Telegram from retrying bad data
     res.sendStatus(200);
   }

@@ -813,7 +813,9 @@ Schema: [{"name": "string", "calories": number, "protein": number, "carbs": numb
               'error',
               `Ollama request TIMED OUT after ${timeout}ms for user ${authenticatedUserId}: ${message}`
             );
-            throw new Error(`AI service request timed out (${timeout}ms).`);
+            throw new Error(`AI service request timed out (${timeout}ms).`, {
+              cause: error,
+            });
           }
           throw error;
         } finally {

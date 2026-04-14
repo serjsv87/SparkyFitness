@@ -88,8 +88,11 @@ router.post(
         message: `MFP sync triggered successfully for ${dates.length} days.`,
         processedDates: dates,
       });
-    } catch (error: any) {
-      log('error', `mfpRoutes: Error triggering manual sync: ${error.message}`);
+    } catch (error: unknown) {
+      log(
+        'error',
+        `mfpRoutes: Error triggering manual sync: ${(error as Error).message}`
+      );
       next(error);
     }
   }

@@ -31,7 +31,7 @@ const router = express.Router();
 router.get('/withings/data', authenticate, async (req, res) => {
   let userId: string | null = null;
   try {
-    userId = (req as any).user?.id as string;
+    userId = (req as unknown as { user?: { id: string } }).user?.id as string;
     const { startDate, endDate } = req.query as {
       startDate: string;
       endDate: string;
@@ -53,10 +53,10 @@ router.get('/withings/data', authenticate, async (req, res) => {
     const customCategories =
       await measurementRepository.getCustomCategories(userId);
     const withingsData: {
-      weight: any;
-      bloodPressure: any[];
-      heartRate: any[];
-      sleep: any[];
+      weight: unknown;
+      bloodPressure: unknown[];
+      heartRate: unknown[];
+      sleep: unknown[];
     } = {
       weight: latestWeight,
       bloodPressure: [],
@@ -81,11 +81,11 @@ router.get('/withings/data', authenticate, async (req, res) => {
             'withings'
           );
         if (category.name.includes('Blood Pressure')) {
-          withingsData.bloodPressure.push(...(entries as any));
+          withingsData.bloodPressure.push(...(entries as unknown[]));
         } else if (category.name.includes('Heart Rate')) {
-          withingsData.heartRate.push(...(entries as any));
+          withingsData.heartRate.push(...(entries as unknown[]));
         } else if (category.name.includes('Sleep')) {
-          withingsData.sleep.push(...(entries as any));
+          withingsData.sleep.push(...(entries as unknown[]));
         }
       }
     }

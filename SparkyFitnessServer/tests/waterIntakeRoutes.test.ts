@@ -253,7 +253,6 @@ describe('Water Intake Routes (v2)', () => {
       expect(res.body).toEqual(result);
       expect(measurementService.deleteWaterIntake).toHaveBeenCalledWith(
         'test-user-id',
-        'test-user-id',
         VALID_UUID
       );
     });

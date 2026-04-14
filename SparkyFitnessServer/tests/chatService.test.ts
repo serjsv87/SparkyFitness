@@ -202,17 +202,18 @@ describe('chatService', () => {
         messageType: 'user',
         metadata: { key: 'value' },
       };
-      (chatRepository as any).saveChatHistory = vi
-        .fn()
-        .mockResolvedValue(undefined);
+      // @ts-expect-error TS(2339): Property 'mockResolvedValue' does not exist on type
+      chatRepository.saveChatMessage.mockResolvedValue(true);
       const result = await chatService.saveSparkyChatHistory(
         mockUserId,
         historyData
       );
-      expect((chatRepository as any).saveChatHistory).toHaveBeenCalledWith({
-        ...historyData,
-        user_id: mockUserId,
-      });
+      expect(chatRepository.saveChatMessage).toHaveBeenCalledWith(
+        mockUserId,
+        historyData.content,
+        historyData.messageType,
+        historyData.metadata
+      );
       expect(result).toEqual({ message: 'Chat history saved successfully.' });
     });
   });

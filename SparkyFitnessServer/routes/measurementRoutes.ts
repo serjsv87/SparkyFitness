@@ -1297,6 +1297,7 @@ router.get(
         req.userId,
         limit as string | undefined,
         orderBy as string | undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { ...(filter as Record<string, any>), category_id }
       ); // Pass category_id in filter object
       res.status(200).json(entries);
